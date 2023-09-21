@@ -1,0 +1,14 @@
+from flask import Flask
+import google.cloud.storage
+from google.cloud import bigquery
+
+app = Flask(__name__)
+
+@app.route('/')
+def load_data_to_bigquery():
+    # Your provided code goes here...
+    # ...
+    return "Data loaded to BigQuery successfully!"
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0')
