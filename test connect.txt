@@ -16,3 +16,33 @@ def test_bigquery_connectivity():
         print(f"An unexpected error occurred: {e}")
 
 test_bigquery_connectivity()
+
+
+
+++++++++++++
+
+
+from flask import Flask, jsonify
+from google.cloud import bigquery
+from google.api_core.exceptions import GoogleAPIError
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello_world():
+    return 'Hello, World!'
+
+@app.route('/test-bigquery')
+def test_bigquery_connectivity():
+    try:
+        client = bigquery.Client()
+        datasets = list(client.list_datasets())
+        dataset_names = [dataset.dataset_id for dataset in datasets]
+        return jsonify({"message": "Connected successfully to BigQuery!", "datasets": dataset_names})
+    except GoogleAPIError as e:
+        return jsonify({"error": f"Failed to connect to BigQuery. Error: {e.message}"})
+    except Exception as e:
+        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
