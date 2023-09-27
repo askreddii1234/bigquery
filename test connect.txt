@@ -46,3 +46,160 @@ def test_bigquery_connectivity():
 
 if __name__ == '__main__':
     app.run(debug=True)
+++++
+
+import pandas as pd
+import datetime
+import uuid
+
+# Defining the SequenceGenerator class for generating sequences
+class SequenceGenerator:
+    def __init__(self, start=1):
+        self.num = start
+    
+    def next_num(self):
+        current = self.num
+        self.num += 1
+        return current
+
+# Sample data for party table with dob and client columns
+party_data = {
+    'dob': [None, '1992-02-20', None, '1985-10-15'],
+    'client': [str(uuid.uuid4()) for _ in range(4)]
+}
+df = pd.DataFrame(party_data)
+df['result'] = df['dob'].apply(lambda x: 'ind' if x is not None else 'org')
+
+# Adding party_id using the sequence generator
+seq_gen_party_id = SequenceGenerator()
+df['party_id'] = [seq_gen_party_id.next_num() for _ in range(len(df))]
+
+# Extracting party_ids for party_internal_reference table
+party_ids = df['party_id'].tolist()
+
+# Create a new sequence generator for reference_id
+seq_gen_reference_id = SequenceGenerator()
+
+# Get the current system date
+current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+
+# Map party_id to client ID
+client_ids = df.set_index('party_id')['client'].to_dict()
+
+# Sample data for sourcesystem
+sourcesystem_data = {
+    'id': [1, 2],
+    'db_name': ['DB1', 'DB2'],
+    'source_system_name': ['Database One', 'Database Two']
+}
+sourcesystem_df = pd.DataFrame(sourcesystem_data)
+
+# Create a mapping dictionary from db_name to source_system_name
+db_name_to_source_system_name = sourcesystem_df.set_index('db_name')['source_system_name'].to_dict()
+
+# Assign db_name and source_system_name to party_internal_reference data
+data_internal_reference = {
+    'reference_id': [seq_gen_reference_id.next_num() for _ in range(len(df))],
+    'party_id': party_ids,
+    'client': [client_ids[id] for id in party_ids],  
+    'creation_date': [current_date for _ in range(len(df))],
+    'last_modified_date': ['9999-12-31' for _ in range(len(df))],
+    'db_name': ['DB1' for _ in range(len(df))],
+    'source_system_name': pd.Series(['DB1' for _ in range(len(df))]).map(db_name_to_source_system_name).tolist()  # Map db_name to source_system_name
+}
+
+party_internal_reference_with_client_and_source_df = pd.DataFrame(data_internal_reference)
+
+print(df)
+print("\n")
+print(sourcesystem_df)
+print("\n")
+print(party_internal_reference_with_client_and_source_df)
+
+
+++++++++++bigquery++++
+
+import pandas as pd
+import datetime
+import uuid
+from google.cloud import bigquery
+
+# Defining the SequenceGenerator class for generating sequences
+class SequenceGenerator:
+    def __init__(self, start=1):
+        self.num = start
+    
+    def next_num(self):
+        current = self.num
+        self.num += 1
+        return current
+
+# Sample data for party table with the dob and client columns
+party_data = {
+    'dob': [None, '1992-02-20', None, '1985-10-15'],
+    'client': [str(uuid.uuid4()) for _ in range(4)]
+}
+df = pd.DataFrame(party_data)
+df['result'] = df['dob'].apply(lambda x: 'ind' if x is not None else 'org')
+
+# Adding party_id using the sequence generator
+seq_gen_party_id = SequenceGenerator()
+df['party_id'] = [seq_gen_party_id.next_num() for _ in range(len(df))]
+
+# Extracting party_ids for party_internal_reference table
+party_ids = df['party_id'].tolist()
+
+# Create a new sequence generator for reference_id
+seq_gen_reference_id = SequenceGenerator()
+
+# Get the current system date
+current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+
+# Map party_id to client ID
+client_ids = df.set_index('party_id')['client'].to_dict()
+
+# Creating the expanded party_internal_reference table
+data_internal_reference = {
+    'reference_id': [seq_gen_reference_id.next_num() for _ in range(len(df))],
+    'party_id': party_ids,
+    'client': [client_ids[id] for id in party_ids],  
+    'reference_type': ['email', 'email', 'phone', 'phone'],
+    'reference_value': ['alice@email.com', 'bob@email.com', '123-456-7890', '098-765-4321'],
+    'creation_date': [current_date for _ in range(len(df))],
+    'last_modified_date': ['9999-12-31' for _ in range(len(df))],
+    'status': ['Active', 'Active', 'Inactive', 'Active'],
+    'comments': [None, None, 'Old number', None]
+}
+
+party_internal_reference_with_client_df = pd.DataFrame(data_internal_reference)
+
+# Set up BigQuery client
+client = bigquery.Client()
+
+# Specify your dataset and tables
+dataset_id = 'your_dataset'
+party_table_id = 'party'
+reference_table_id = 'party_internal_reference'
+
+# Ensure the dataset exists
+dataset_ref = client.dataset(dataset_id)
+try:
+    client.get_dataset(dataset_ref)
+except:
+    dataset = bigquery.Dataset(dataset_ref)
+    client.create_dataset(dataset)
+
+# Insert df (party table) into BigQuery
+table_ref = dataset_ref.table(party_table_id)
+job_config = bigquery.LoadJobConfig()
+job_config.autodetect = True
+job_config.write_disposition = 'WRITE_TRUNCATE'
+load_job = client.load_table_from_dataframe(df, table_ref, job_config=job_config)
+load_job.result()
+
+# Insert party_internal_reference_with_client_df into BigQuery
+table_ref = dataset_ref.table(reference_table_id)
+load_job = client.load_table_from_dataframe(party_internal_reference_with_client_df, table_ref, job_config=job_config)
+load_job.result()
+
+
