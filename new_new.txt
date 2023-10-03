@@ -1,0 +1,243 @@
+import csv
+import os
+import logging
+from database_functions import (load_into_individual_table, load_into_organization_table,
+                                load_into_address_table, load_into_contactpoint_table, 
+                                load_into_relationship_table)
+
+# Configuration
+INPUT_DIR = '/path/to/input/directory'
+ARCHIVE_DIR = '/path/to/archive/directory'
+LOG_FILE = '/path/to/logfile.log'
+
+# Set up logging
+logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
+
+def process_file(file_path):
+    party_ids = {}  # To store PartyID against Name for relationships
+
+    with open(file_path, 'r') as f:
+        reader = csv.DictReader(f)
+        for record in reader:
+            try:
+                if record['Type'] == 'Individual':
+                    party_id = load_into_individual_table(record)
+                else:
+                    party_id = load_into_organization_table(record)
+
+                party_ids[record['Name']] = party_id
+
+                # Load address
+                address_data = {
+                    'PartyID': party_id,
+                    'AddressLine1': record['AddressLine1'],
+                    'City': record['City'],
+                    'State': record['State'],
+                    'PostalCode': record['PostalCode'],
+                    'Country': record['Country']
+                }
+                load_into_address_table(address_data)
+
+                # Load contact points
+                contact_points = [
+                    {'Type': 'Email', 'Value': record['Email']},
+                    {'Type': 'Phone', 'Value': record['Phone']},
+                    {'Type': 'Twitter', 'Value': record['TwitterHandle']}
+                ]
+                for cp in contact_points:
+                    cp['PartyID'] = party_id
+                    load_into_contactpoint_table(cp)
+
+                # Load relationships
+                for relationship in eval(record['Relationships']):
+                    relationship_data = {
+                        'PartyID1': party_id,
+                        'PartyID2': party_ids.get(relationship['RelatedParty'], None),
+                        'RelationshipType': relationship['Type']
+                    }
+                    load_into_relationship_table(relationship_data)
+
+            except Exception as e:
+                logging.error(f"Error processing record {record['Name']}: {str(e)}")
+
+    # Archive the processed file
+    os.rename(file_path, os.path.join(ARCHIVE_DIR, os.path.basename(file_path)))
+
+if __name__ == '__main__':
+    for filename in os.listdir(INPUT_DIR):
+        if filename.endswith('.csv'):  # Checking for CSV files
+            process_file(os.path.join(INPUT_DIR, filename))
+            logging.info(f"Processed file: {filename}")
+
+
+++++++++++++++++++++++++
+
+import csv
+import os
+import logging
+from database_functions import (load_into_individual_table, load_into_organization_table,
+                                load_into_address_table, load_into_contactpoint_table, 
+                                load_into_relationship_table)
+
+# Configuration
+INPUT_DIR = '/path/to/input/directory'
+ARCHIVE_DIR = '/path/to/archive/directory'
+LOG_FILE = '/path/to/logfile.log'
+
+# Set up logging
+logging.basicConfig(filename=LOG_FILE, level=logging.INFO)
+
+def process_file(file_path):
+    party_ids = {}  # To store PartyID against Name for relationships
+
+    with open(file_path, 'r') as f:
+        reader = csv.DictReader(f)
+        for record in reader:
+            try:
+                if record['Type'] == 'Individual':
+                    party_id = load_into_individual_table(record)
+                else:
+                    party_id = load_into_organization_table(record)
+
+                party_ids[record['Name']] = party_id
+
+                # Load address
+                address_data = {
+                    'PartyID': party_id,
+                    'AddressLine1': record['AddressLine1'],
+                    'City': record['City'],
+                    'State': record['State'],
+                    'PostalCode': record['PostalCode'],
+                    'Country': record['Country']
+                }
+                load_into_address_table(address_data)
+
+                # Load contact points
+                contact_points = [
+                    {'Type': 'Email', 'Value': record['Email']},
+                    {'Type': 'Phone', 'Value': record['Phone']},
+                    {'Type': 'Twitter', 'Value': record['TwitterHandle']}
+                ]
+                for cp in contact_points:
+                    cp['PartyID'] = party_id
+                    load_into_contactpoint_table(cp)
+
+                # Load relationships
+                for relationship in eval(record['Relationships']):
+                    relationship_data = {
+                        'PartyID1': party_id,
+                        'PartyID2': party_ids.get(relationship['RelatedParty'], None),
+                        'RelationshipType': relationship['Type']
+                    }
+                    load_into_relationship_table(relationship_data)
+
+            except Exception as e:
+                logging.error(f"Error processing record {record['Name']}: {str(e)}")
+
+    # Archive the processed file
+    os.rename(file_path, os.path.join(ARCHIVE_DIR, os.path.basename(file_path)))
+
+if __name__ == '__main__':
+    for filename in os.listdir(INPUT_DIR):
+        if filename.endswith('.csv'):  # Checking for CSV files
+            process_file(os.path.join(INPUT_DIR, filename))
+            logging.info(f"Processed file: {filename}")
+
++++++++++++++++++++++++
+
+
+def load_into_individual_table(record):
+    # Insert into the Individual table and return the PartyID
+    # This is just a placeholder, actual implementation will involve an SQL INSERT statement or ORM method
+    pass
+
+def load_into_organization_table(record):
+    # Insert into the Organization table and return the PartyID
+    # This is just a placeholder
+    pass
+
+def load_into_address_table(data):
+    # Insert address data into Address table
+    # This is just a placeholder
+    pass
+
+def load_into_contactpoint_table(data):
+    # Insert contact data into ContactPoint table
+    # This is just a placeholder
+    pass
+
+def load_into_relationship_table(data):
+    # Insert relationship data into Relationship table
+    # This is just a placeholder
+    pass
+
+# Example raw data (including relationship)
+raw_data = [
+    {
+        'Type': 'Individual',
+        'Name': 'John Doe',
+        'Email': 'john.doe@email.com',
+        'Phone': '123-456-7890',
+        'AddressLine1': '123 Elm St',
+        'City': 'Springfield',
+        'State': 'IL',
+        'PostalCode': '12345',
+        'Country': 'USA',
+        'TwitterHandle': '@johndoe',
+        'Relationships': [{'Type': 'Affiliate', 'RelatedParty': 'ABC Corp'}]
+    },
+    {
+        'Type': 'Organization',
+        'Name': 'ABC Corp',
+        'RegistrationNumber': 'ABC123',
+        'Email': 'contact@abc.com',
+        'Phone': '234-567-8901',
+        'AddressLine1': '456 Oak Rd',
+        'City': 'Shelbyville',
+        'State': 'IL',
+        'PostalCode': '67890',
+        'Country': 'USA',
+        'TwitterHandle': '@abccorp',
+        'Relationships': []
+    }
+]
+
+party_ids = {}  # To store PartyID against Name for relationships
+
+for record in raw_data:
+    if record['Type'] == 'Individual':
+        party_id = load_into_individual_table(record)
+    else:
+        party_id = load_into_organization_table(record)
+    
+    party_ids[record['Name']] = party_id
+
+    # Load address
+    address_data = {
+        'PartyID': party_id,
+        'AddressLine1': record['AddressLine1'],
+        'City': record['City'],
+        'State': record['State'],
+        'PostalCode': record['PostalCode'],
+        'Country': record['Country']
+    }
+    load_into_address_table(address_data)
+
+    # Load contact points
+    contact_points = [
+        {'Type': 'Email', 'Value': record['Email']},
+        {'Type': 'Phone', 'Value': record['Phone']},
+        {'Type': 'Twitter', 'Value': record['TwitterHandle']}
+    ]
+    for cp in contact_points:
+        cp['PartyID'] = party_id
+        load_into_contactpoint_table(cp)
+
+    # Load relationships
+    for relationship in record['Relationships']:
+        relationship_data = {
+            'PartyID1': party_id,
+            'PartyID2': party_ids.get(relationship['RelatedParty'], None),
+            'RelationshipType': relationship['Type']
+        }
+        load_into_relationship_table(relationship_data)
