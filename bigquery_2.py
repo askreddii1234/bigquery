@@ -1,11 +1,21 @@
-!pip install google-cloud-storage google-cloud-bigquery
-
-import google.cloud.storage
+from google.cloud import storage
 from google.cloud import bigquery
+from google.oauth2 import service_account
+import pandas as pd
+from io import BytesIO
 
-# Initialize GCS and BigQuery clients
-storage_client = google.cloud.storage.Client()
-bq_client = bigquery.Client()
+# Load credentials from the service account file
+credentials = service_account.Credentials.from_service_account_file(
+    '/content/content/service-explore-labs-383615-7de7261b9ce5.json')
+
+# Initialize GCS and BigQuery clients using the credentials
+storage_client = storage.Client(credentials=credentials)
+bq_client = bigquery.Client(credentials=credentials)
+
+# Preprocess the dates in the DataFrame
+def preprocess_dates_in_dataframe(df):
+    df['effective_to_date'] = df['effective_to_date'].replace('31-Dec-9999', '9999-12-31')
+    return df
 
 # Try listing datasets
 try:
@@ -17,7 +27,7 @@ except Exception as e:
     print(f"Error when listing datasets: {e}")
 
 # Step 1: List files in the specified "folder" in the GCS bucket
-bucket_name = 'cloudskool'
+bucket_name = 'cloudskool1'
 folder_name = 'ingress/'  # Note the trailing slash to ensure it's a folder
 
 bucket = storage_client.get_bucket(bucket_name)
@@ -36,18 +46,25 @@ for blob in filtered_files:
         print(f"Skipping blob {blob.name} due to invalid derived table name.")
         continue
 
-    dataset_ref = bq_client.dataset('loon_bucket_bq')
+    dataset_ref = bq_client.dataset('gdm')
     table_ref = dataset_ref.table(table_name)
+    print(f"Truncating and loading data into BigQuery table {table_name}...")
+
+    # Read the CSV data from the GCS blob into a pandas DataFrame
+    blob_data = BytesIO(blob.download_as_bytes())
+    df = pd.read_csv(blob_data)
     
+    # Preprocess the dates in the DataFrame
+    df = preprocess_dates_in_dataframe(df)
+
+    # Load the DataFrame into BigQuery
     job_config = bigquery.LoadJobConfig()
-    job_config.source_format = bigquery.SourceFormat.CSV  # Set source format to CSV
+    job_config.source_format = bigquery.SourceFormat.CSV
     job_config.autodetect = True
-    job_config.skip_leading_rows = 1  # Skip header row in CSV
-    job_config.write_disposition = bigquery.WriteDisposition.WRITE_TRUNCATE  # Truncate table before loading
-    
-    load_job = bq_client.load_table_from_uri(
-        f'gs://{bucket_name}/{blob.name}', table_ref, job_config=job_config)
-    load_job.result()  # Wait for the job to finish
+    job_config.write_disposition = bigquery.WriteDisposition.WRITE_TRUNCATE
+
+    load_job = bq_client.load_table_from_dataframe(df, table_ref, job_config=job_config)
+    load_job.result()
     
     # Fetch job statistics
     job_stats = load_job._properties['statistics']['load']
@@ -62,3 +79,73 @@ for blob in filtered_files:
     print(f"Number of records loaded from source: {rows_loaded}")
     print(f"Number of rows in BigQuery table {table_name}: {table_rows}")
     print("----")
+
+
+++++++++++++++
+
+from flask import Flask, request, jsonify, render_template_string
+from google.cloud import storage
+from google.cloud import bigquery
+from google.oauth2 import service_account
+import pandas as pd
+from io import BytesIO
+
+app = Flask(__name__)
+
+# Initialize GCS and BigQuery clients using the credentials
+credentials = service_account.Credentials.from_service_account_file(
+    '/content/content/service-explore-labs-383615-7de7261b9ce5.json')
+storage_client = storage.Client(credentials=credentials)
+bq_client = bigquery.Client(credentials=credentials)
+
+def preprocess_dates_in_dataframe(df):
+    df['effective_to_date'] = df['effective_to_date'].replace('31-Dec-9999', '9999-12-31')
+    return df
+
+@app.route('/load-data', methods=['GET', 'POST'])
+def load_data():
+    if request.method == 'POST':
+        file_name = request.form.get('file_name')
+        
+        if not file_name:
+            return "File name not provided", 400
+        
+        bucket_name = 'cloudskool1'
+        blob = storage_client.get_bucket(bucket_name).blob(f"ingress/{file_name}")
+        
+        table_name = file_name.split('.')[0]
+        dataset_ref = bq_client.dataset('gdm')
+        table_ref = dataset_ref.table(table_name)
+        
+        # Read the CSV data from the GCS blob into a pandas DataFrame
+        blob_data = BytesIO(blob.download_as_bytes())
+        df = pd.read_csv(blob_data)
+        
+        # Preprocess the dates in the DataFrame
+        df = preprocess_dates_in_dataframe(df)
+
+        # Load the DataFrame into BigQuery
+        job_config = bigquery.LoadJobConfig()
+        job_config.source_format = bigquery.SourceFormat.CSV
+        job_config.autodetect = True
+        job_config.write_disposition = bigquery.WriteDisposition.WRITE_TRUNCATE
+
+        load_job = bq_client.load_table_from_dataframe(df, table_ref, job_config=job_config)
+        load_job.result()
+        
+        return f"Data from {file_name} loaded successfully!"
+
+    # If it's a GET request, render the form
+    return render_template_string("""
+        <form method="post">
+            <label for="file_name">File Name:</label>
+            <input type="text" id="file_name" name="file_name" required>
+            <input type="submit" value="Load Data">
+        </form>
+    """)
+
+if __name__ == '__main__':
+    app.run(debug=True, port=8090)
+
+
+
