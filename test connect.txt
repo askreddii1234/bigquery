@@ -203,3 +203,218 @@ load_job = client.load_table_from_dataframe(party_internal_reference_with_client
 load_job.result()
 
 
++++++++++++++++++++++++++++++++++
+
+
+import pandas as pd
+import datetime
+import uuid
+import os
+from google.cloud import storage
+from io import StringIO
+
+# Defining the SequenceGenerator class for generating sequences
+class SequenceGenerator:
+    def __init__(self, start=1):
+        self.num = start
+    
+    def next_num(self):
+        current = self.num
+        self.num += 1
+        return current
+
+# Data Generation (unchanged)
+
+# ...
+
+# Google Cloud Storage Initialization
+def save_dataframe(df, bucket_name, destination_blob_name, folder_name=None, is_debug=False):
+    """Uploads a dataframe to GCS or saves locally based on debug flag."""
+    # Convert dataframe to CSV
+    output = StringIO()
+    df.to_csv(output, index=False)
+    output.seek(0)
+    
+    # If debug mode, save locally
+    if is_debug:
+        local_path = os.path.join(folder_name if folder_name else "", destination_blob_name)
+        with open(local_path, 'w') as local_file:
+            df.to_csv(local_file, index=False)
+        return
+
+    # If not in debug mode, save to GCS
+    if folder_name:
+        destination_blob_name = f"{folder_name}/{destination_blob_name}"
+
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(destination_blob_name)
+    blob.upload_from_file(output, content_type='text/csv')
+
+# Variables
+bucket_name = "YOUR_BUCKET_NAME"
+folder_name = "your_folder_name"
+is_debug = False  # Set this to True for debugging to save files locally
+
+# Save the 'party' table
+save_dataframe(party_df, bucket_name, 'party_table.csv', folder_name, is_debug)
+
+# Save the 'sourcesystem' table
+save_dataframe(sourcesystem_df, bucket_name, 'sourcesystem_table.csv', folder_name, is_debug)
+
+# Save the 'party_internal_reference_with_client_and_source' table
+save_dataframe(party_internal_reference_with_client_and_source_df, bucket_name, 'party_internal_reference_table.csv', folder_name, is_debug)
+
+# Save the 'party_role' table
+save_dataframe(party_role_df, bucket_name, 'party_role_table.csv', folder_name, is_debug)
+
+
+
+++++++++++++++++++
+
+import pandas as pd
+import datetime
+import uuid
+
+# Define the SequenceGenerator class for generating sequences
+class SequenceGenerator:
+    def __init__(self, start=1):
+        self.num = start
+
+    def next_num(self):
+        current = self.num
+        self.num += 1
+        return current
+
+# Sample data for the source_data DataFrame
+source_data = {
+    'party_id': [1, 2, 3, 4],  # Existing party IDs
+    'country_origin': ['USA', 'Canada', 'UK', 'Germany']
+}
+source_df = pd.DataFrame(source_data)
+
+# Find the maximum existing 'party_id'
+max_existing_party_id = source_df['party_id'].max()
+
+# Create a new sequence generator for 'party_id' starting from 'max + 1'
+seq_gen_party_id = SequenceGenerator(start=max_existing_party_id + 1)
+
+# ... (Rest of your code for processing new data)
+
+# Now, when you process new data, you can use seq_gen_party_id.next_num() to get new party IDs starting from 'max + 1'
+
+
+
++++++++++++++++++++++++++++
+
+
+import pandas as pd
+
+# Function to write a DataFrame to a CSV file
+def write_dataframe_to_csv(df, file_path):
+    try:
+        # Write the DataFrame to the CSV file
+        df.to_csv(file_path, index=False)
+
+    except Exception as e:
+        # If an error occurs, handle the error and roll back
+        print(f"Error: {e}")
+        raise  # Re-raise the exception to signal the error
+
+# Sample data for the DataFrame
+data = {
+    'id': [1, 2, 3, 4],
+    'name': ['Alice', 'Bob', 'Charlie', 'David']
+}
+df = pd.DataFrame(data)
+
+# Define the file path for the CSV file
+file_path = 'data.csv'
+
+try:
+    # Start a "transaction"
+    write_dataframe_to_csv(df, file_path)
+
+    # Commit the "transaction" if successful
+    print("Data written successfully!")
+
+except Exception as e:
+    # Roll back the "transaction" if an error occurs
+    print(f"Rolling back due to error: {e}")
+    # Perform any necessary rollback actions here
+
+# Continue with the rest of your code or error handling logic as needed
+++++
+
+import pandas as pd
+import datetime
+import uuid
+import json
+from google.cloud import bigquery
+
+# Define the Google Cloud project and dataset ID
+project_id = "your-project-id"
+dataset_id = "your-dataset-id"
+
+# Defining the SequenceGenerator class for generating sequences
+class SequenceGenerator:
+    def __init__(self, start=1):
+        self.num = start
+    
+    def next_num(self):
+        current = self.num
+        self.num += 1
+        return current
+
+# Sample data for party table with dob, client, and party_type_code columns
+party_data = {
+    'dob': [None, '1992-02-20', None, '1985-10-15'],
+    'client': [str(uuid.uuid4()) for _ in range(4)],
+    'party_type_code': ['IND', 'ORG', 'IND', 'ORG']
+}
+party_df = pd.DataFrame(party_data)  # Create the 'party' dataframe
+
+# Adding party_id using the sequence generator
+seq_gen_party_id = SequenceGenerator()
+party_df['party_id'] = [seq_gen_party_id.next_num() for _ in range(len(party_df))]
+
+# Check if 'dob' is a valid date and apply 'ind' or 'org' accordingly
+party_df['result'] = party_df['dob'].apply(lambda x: 'ind' if pd.notna(x) and pd.to_datetime(x, errors='coerce') is not pd.NaT else 'org')
+
+# Print the 'party' table
+print("Party Table:")
+print(party_df)
+
+# Save the 'party_df' DataFrame to a JSON file
+json_file_path = 'party_data.json'
+party_df.to_json(json_file_path, orient='records', lines=True)
+
+print(f"Data saved to {json_file_path}")
+
+# Load the data into BigQuery
+client = bigquery.Client(project=project_id)
+dataset_ref = client.dataset(dataset_id)
+
+# Define the table name
+table_name = "party"
+
+# Create a job configuration
+job_config = bigquery.LoadJobConfig(
+    schema=[
+        bigquery.SchemaField("party_id", "INTEGER"),
+        bigquery.SchemaField("dob", "DATE"),
+        bigquery.SchemaField("client", "STRING"),
+        bigquery.SchemaField("party_type_code", "STRING"),
+        bigquery.SchemaField("result", "STRING")
+    ],
+    source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+)
+
+# Load the data from the JSON file into BigQuery
+with open(json_file_path, "rb") as source_file:
+    job = client.load_table_from_file(source_file, dataset_ref.table(table_name), job_config=job_config)
+
+job.result()  # Wait for the job to complete
+
+print(f"Data loaded into BigQuery table {project_id}.{dataset_id}.{table_name}")
+
