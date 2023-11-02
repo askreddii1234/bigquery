@@ -241,3 +241,611 @@ for record in raw_data:
             'RelationshipType': relationship['Type']
         }
         load_into_relationship_table(relationship_data)
+
+
+
+++++++++++++++++++++++++=
+
+import os
+import time
+import pandas as pd
+from google.cloud import storage
+from google.oauth2 import service_account
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+# Define your GCS source and destination bucket names
+source_bucket_name = 'your-source-bucket'
+destination_bucket_name = 'your-destination-bucket'
+
+# Create a service account key JSON file and provide its path
+credentials_path = '/path/to/your/service-account-key.json'
+
+# Initialize GCS client
+credentials = service_account.Credentials.from_service_account_file(credentials_path)
+client = storage.Client(credentials=credentials)
+
+# Define the folder within the source GCS bucket to monitor
+source_folder = 'folder-to-monitor/'
+
+class CSVHandler(FileSystemEventHandler):
+    def on_created(self, event):
+        if event.is_directory:
+            return
+        if event.src_path.endswith('.csv'):
+            try:
+                # Read the newly created CSV file from GCS
+                blob = client.get_bucket(source_bucket_name).get_blob(event.src_path)
+                data = pd.read_csv(blob.download_as_text())
+
+                # Apply your cleaning functions
+                data = clean_csv(data)
+
+                # Upload the cleaned DataFrame to the destination GCS bucket
+                destination_blob = client.get_bucket(destination_bucket_name).blob(event.src_path)
+                destination_blob.upload_from_string(data.to_csv(index=False), content_type='text/csv')
+
+                print(f"Cleaned and uploaded: {destination_blob.name}")
+            except Exception as e:
+                print(f"Error processing file {event.src_path}: {str(e)}")
+
+def clean_csv(data):
+    # Your cleaning functions go here
+    data = remove_duplicates(data)
+    data = handle_missing_values(data)
+    data = convert_data_types(data)
+    # Add more cleaning steps as needed
+    return data
+
+def remove_duplicates(data):
+    return data.drop_duplicates()
+
+def handle_missing_values(data):
+    return data.dropna()
+
+def convert_data_types(data):
+    # Example: Convert a column to the desired data type
+    data['column_name'] = data['column_name'].astype('desired_data_type')
+    return data
+
+if __name__ == "__main__":
+    event_handler = CSVHandler()
+    observer = Observer()
+    observer.schedule(event_handler, path=source_folder, recursive=False)
+
+    try:
+        observer.start()
+        print(f"Monitoring GCS folder: gs://{source_bucket_name}/{source_folder}")
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+
++++++++++
+
+
+import os
+import time
+import pandas as pd
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+# Define the source system folder to monitor
+source_folder = '/path/to/source_folder'
+
+# Define the folder where cleaned CSV files will be saved
+output_folder = '/path/to/output_folder'
+
+class CSVHandler(FileSystemEventHandler):
+    def on_created(self, event):
+        if event.is_directory:
+            return
+        if event.src_path.endswith('.csv'):
+            try:
+                # Read the newly created CSV file
+                df = pd.read_csv(event.src_path)
+
+                # Apply your cleaning functions
+                df = clean_csv(df)
+
+                # Save the cleaned DataFrame to the output folder
+                output_file = os.path.join(output_folder, os.path.basename(event.src_path))
+                df.to_csv(output_file, index=False)
+
+                print(f"Cleaned and saved: {output_file}")
+            except Exception as e:
+                print(f"Error processing file {event.src_path}: {str(e)}")
+
+def clean_csv(data):
+    # Your cleaning functions go here
+    data = remove_duplicates(data)
+    data = handle_missing_values(data)
+    data = convert_data_types(data)
+    # Add more cleaning steps as needed
+    return data
+
+def remove_duplicates(data):
+    return data.drop_duplicates()
+
+def handle_missing_values(data):
+    return data.dropna()
+
+def convert_data_types(data):
+    # Example: Convert a column to the desired data type
+    data['column_name'] = data['column_name'].astype('desired_data_type')
+    return data
+
+if __name__ == "__main__":
+    event_handler = CSVHandler()
+    observer = Observer()
+    observer.schedule(event_handler, path=source_folder, recursive=False)
+
+    try:
+        observer.start()
+        print(f"Monitoring folder: {source_folder}")
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+
+
+++++++++++++++
+
+import codecs
+import csv
+import unicodedata
+from collections import defaultdict
+
+# Define file paths
+input_file_path = 'input_data.csv'
+output_file_path = 'cleaned_data.csv'
+
+# Define special characters that you want to remove
+special_characters = '!@#$%^&*()_+[]{}|:;"<>,.?/~`'
+
+# Initialize data structures for duplicate record checking
+unique_records = set()
+duplicate_records = defaultdict(list)
+
+# Define a function to remove special characters and trim spaces
+def clean_and_normalize_text(text):
+    # Remove special characters
+    cleaned_text = ''.join(char for char in text if char not in special_characters)
+    
+    # Normalize whitespace and trim leading/trailing spaces
+    cleaned_text = ' '.join(cleaned_text.split())
+    
+    # Normalize Unicode characters (e.g., convert accented characters to their base form)
+    cleaned_text = unicodedata.normalize('NFKD', cleaned_text).encode('ASCII', 'ignore').decode('utf-8')
+    
+    return cleaned_text
+
+# Define a function to perform data validation
+def is_valid_data(row):
+    # Add your data validation checks here
+    # Example: Check if the first field is a valid date
+    # You can add more validation rules as needed
+    try:
+        # Replace with your validation logic (e.g., date validation)
+        return True
+    except ValueError:
+        return False
+
+try:
+    # Open the input file with appropriate encoding (e.g., utf-8)
+    with codecs.open(input_file_path, 'r', encoding='utf-8') as input_file:
+        # Open the output file with the same encoding
+        with codecs.open(output_file_path, 'w', encoding='utf-8', newline='') as output_file:
+            csv_reader = csv.reader(input_file)
+            csv_writer = csv.writer(output_file)
+            
+            for row in csv_reader:
+                # Clean and normalize each field in the row
+                cleaned_row = [clean_and_normalize_text(field) for field in row]
+                
+                # Check for data validation
+                if is_valid_data(cleaned_row):
+                    # Check for duplicate records
+                    row_as_string = ','.join(cleaned_row)
+                    if row_as_string in unique_records:
+                        duplicate_records[row_as_string].append(row)
+                    else:
+                        unique_records.add(row_as_string)
+                        csv_writer.writerow(cleaned_row)
+                else:
+                    print(f"Invalid data found: {row}")
+
+    # Report duplicate records, if any
+    if duplicate_records:
+        print("Duplicate Records Found:")
+        for duplicate, records in duplicate_records.items():
+            print(f"Duplicate Record: {duplicate}")
+            for record in records:
+                print(f"Original Record: {record}")
+
+    print("Data cleaning, validation, and deduplication completed.")
+
+except Exception as e:
+    print(f"An error occurred: {str(e)}")
++++++++++++++
+
+import codecs
+import csv
+import unicodedata
+from collections import defaultdict
+
+# Define file paths
+input_file_path = 'input_data.csv'
+output_file_path = 'cleaned_data.csv'
+
+# Define special characters that you want to remove
+special_characters = '!@#$%^&*()_+[]{}|:;"<>,.?/~`'
+
+# Initialize data structures for duplicate record checking
+unique_records = set()
+duplicate_records = defaultdict(list)
+
+# Define a function to remove special characters and trim spaces
+def clean_and_normalize_text(text):
+    # Remove special characters
+    cleaned_text = ''.join(char for char in text if char not in special_characters)
+    
+    # Normalize whitespace and trim leading/trailing spaces
+    cleaned_text = ' '.join(cleaned_text.split())
+    
+    # Normalize Unicode characters (e.g., convert accented characters to their base form)
+    cleaned_text = unicodedata.normalize('NFKD', cleaned_text).encode('ASCII', 'ignore').decode('utf-8')
+    
+    return cleaned_text
+
+try:
+    # Open the input file with appropriate encoding (e.g., utf-8)
+    with codecs.open(input_file_path, 'r', encoding='utf-8') as input_file:
+        # Open the output file with the same encoding
+        with codecs.open(output_file_path, 'w', encoding='utf-8', newline='') as output_file:
+            csv_reader = csv.reader(input_file)
+            csv_writer = csv.writer(output_file)
+            
+            for row in csv_reader:
+                # Clean and normalize each field in the row
+                cleaned_row = [clean_and_normalize_text(field) for field in row]
+                
+                # Check for duplicate records
+                row_as_string = ','.join(cleaned_row)
+                if row_as_string in unique_records:
+                    duplicate_records[row_as_string].append(row)
+                else:
+                    unique_records.add(row_as_string)
+                    csv_writer.writerow(cleaned_row)
+
+    # Report duplicate records, if any
+    if duplicate_records:
+        print("Duplicate Records Found:")
+        for duplicate, records in duplicate_records.items():
+            print(f"Duplicate Record: {duplicate}")
+            for record in records:
+                print(f"Original Record: {record}")
+
+    print("Data cleaning and deduplication completed.")
+
+except Exception as e:
+    print(f"An error occurred: {str(e)}")
++++++++++++++++
+
+from google.cloud import storage
+import codecs
+
+# Define your GCS credentials file (replace with your own JSON key file)
+credentials_path = "path/to/your/credentials.json"
+
+# Initialize the Google Cloud Storage client
+storage_client = storage.Client.from_service_account_json(credentials_path)
+
+# Define GCS bucket names
+source_bucket_name = "your-source-bucket"
+target_bucket_name = "your-target-bucket"
+
+# Define source and target folder paths within the buckets
+source_folder_path = "raw/"  # Adjust as needed
+target_folder_path = "cleaned/"  # Adjust as needed
+
+# Define source and target encodings
+source_encoding = 'cp500'
+target_encoding = 'utf-8'
+
+# Define a data quality function to check the data
+def is_data_quality_ok(data):
+    # Add your data quality checks here
+    # Example: Check if the data contains a specific keyword
+    return "specific_keyword" in data
+
+try:
+    # Get the source bucket
+    source_bucket = storage_client.get_bucket(source_bucket_name)
+
+    # List all files in the source folder
+    blobs = source_bucket.list_blobs(prefix=source_folder_path)
+
+    for blob in blobs:
+        # Extract the file name from the full path
+        file_name = blob.name[len(source_folder_path):]
+
+        # Download the file from GCS
+        downloaded_data = blob.download_as_string()
+
+        # Check data quality before processing
+        if is_data_quality_ok(downloaded_data):
+            # Convert and clean the data as needed (similar to your previous code)
+            cleaned_data = downloaded_data  # Replace with your cleaning logic
+
+            # Get the target bucket
+            target_bucket = storage_client.get_bucket(target_bucket_name)
+
+            # Define the target file path with the same folder structure
+            target_file_path = target_folder_path + file_name
+
+            # Upload the cleaned data to the target bucket with the same folder structure
+            target_blob = target_bucket.blob(target_file_path)
+            target_blob.upload_from_string(cleaned_data, content_type="text/plain")
+
+            print(f"File '{file_name}' has been successfully converted and transferred to {target_bucket_name}/{target_file_path}")
+        else:
+            print(f"Skipping file '{file_name}' due to data quality issues.")
+
+except Exception as e:
+    print(f"An error occurred: {str(e)}")
+
+
++++
+
+from google.cloud import storage
+import codecs
+
+# Define your GCS credentials file (replace with your own JSON key file)
+credentials_path = "path/to/your/credentials.json"
+
+# Initialize the Google Cloud Storage client
+storage_client = storage.Client.from_service_account_json(credentials_path)
+
+# Define GCS bucket names
+source_bucket_name = "your-source-bucket"
+target_bucket_name = "your-target-bucket"
+
+# Define source and target folder paths within the buckets
+source_folder_path = "raw/"  # Adjust as needed
+target_folder_path = "cleaned/"  # Adjust as needed
+
+# Define source and target encodings
+source_encoding = 'cp500'
+target_encoding = 'utf-8'
+
+try:
+    # Get the source bucket
+    source_bucket = storage_client.get_bucket(source_bucket_name)
+
+    # List all files in the source folder
+    blobs = source_bucket.list_blobs(prefix=source_folder_path)
+
+    for blob in blobs:
+        # Extract the file name from the full path
+        file_name = blob.name[len(source_folder_path):]
+
+        # Download the file from GCS
+        downloaded_data = blob.download_as_string()
+
+        # Convert and clean the data as needed (similar to your previous code)
+        cleaned_data = downloaded_data  # Replace with your cleaning logic
+
+        # Get the target bucket
+        target_bucket = storage_client.get_bucket(target_bucket_name)
+
+        # Define the target file path with the same folder structure
+        target_file_path = target_folder_path + file_name
+
+        # Upload the cleaned data to the target bucket with the same folder structure
+        target_blob = target_bucket.blob(target_file_path)
+        target_blob.upload_from_string(cleaned_data, content_type="text/plain")
+
+        print(f"File '{file_name}' has been successfully converted and transferred to {target_bucket_name}/{target_file_path}")
+
+except Exception as e:
+    print(f"An error occurred: {str(e)}")
++++
+
+
+Data cleansing for mainframe datasets typically involves several steps to clean, validate, and transform the data. Here's a high-level outline of a data cleansing script for mainframes datasets:
+
+Data Extraction: Extract the mainframe dataset into a format that can be processed by your chosen scripting language or tool. This might involve using utilities like FTP or specialized software for mainframe data extraction.
+
+Data Inspection: Examine the dataset to identify issues such as missing values, inconsistent formatting, and outliers. Understand the data's structure and content.
+
+Data Validation:
+
+Check for missing values and decide on a strategy for handling them (e.g., imputation or removal).
+Validate data types to ensure they match the expected format.
+Validate data ranges to identify outliers or invalid values.
+Data Cleaning:
+
+Remove duplicates.
+Standardize data formats (e.g., date formats, numeric formats).
+Correct data errors (e.g., typos).
+Handle special characters or encoding issues
+
+++++
+
+
+import pandas as pd
+import numpy as np
+
+# Sample data
+data_dict = {
+    # ... your data ...
+}
+data = pd.DataFrame(data_dict)
+
+# Convert 'date' column to datetime type
+data['date'] = pd.to_datetime(data['date'])
+
+# 1. Handle Missing Values:
+# Numeric Columns
+data['worker_population_percentage'] = data['worker_population_percentage'].replace('IDE', np.nan).astype(float)
+data['resident_population_percentage'] = data['resident_population_percentage'].replace('IDE', np.nan).astype(float)
+
+# Fill NaNs (Example: using median)
+data['worker_population_percentage'].fillna(data['worker_population_percentage'].median(), inplace=True)
+data['resident_population_percentage'].fillna(data['resident_population_percentage'].median(), inplace=True)
+
+# 2. Check for Missing Dates:
+# Generate expected date range
+expected_dates = pd.date_range(start=data['date'].min(), end=data['date'].max())
+
+# Find missing dates
+missing_dates = expected_dates.difference(data['date'])
+print("Missing Dates:", missing_dates)
+
+# 3. Transform 'time_indicator' to 'start_time' and 'end_time':
+# Extract start and end hour
+data[['start_hour_str', 'end_hour_str']] = data['time_indicator'].str.split('-', expand=True)
+
+# Convert to datetime
+data['start_time'] = pd.to_datetime(data['date'].astype(str) + ' ' + data['start_hour_str'] + ':00')
+data['end_time'] = pd.to_datetime(data['date'].astype(str) + ' ' + data['end_hour_str'] + ':00')
+
+# Drop unnecessary columns
+data.drop(['time_indicator', 'start_hour_str', 'end_hour_str'], axis=1, inplace=True)
+
+# Display data
+print(data)
+++++
+
+import chardet
+import os
+
+def detect_file_encoding(file_path):
+    with open(file_path, 'rb') as f:
+        raw_data = f.read()
+    result = chardet.detect(raw_data)
+    return result['encoding']
+
+def identify_encodings_in_directory(directory_path):
+    for root, dirs, files in os.walk(directory_path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            try:
+                encoding = detect_file_encoding(file_path)
+                print(f"File: {file_path}\nEncoding: {encoding}\n")
+            except Exception as e:
+                print(f"Error processing file {file_path}: {e}\n")
+
+# Example usage:
+identify_encodings_in_directory('.')
+++++
+
+3. Data Cleaning:
+Standardize: Make data formats consistent (date formats, strings, etc.).
+Remove Duplicates: Identify and remove duplicate records.
+Handle Missing Values: Either remove rows/columns or impute them based on business logic.
+
+# Standardize date
+df['date_column'] = pd.to_datetime(df['date_column'], format='%Y%m%d')
+
+# Remove duplicates
+df = df.drop_duplicates()
+
+# Impute missing values
+df['column_name'] = df['column_name'].fillna(value)
+
+
+
+4. Data Transformation:
+Normalize: Scale numeric data.
+Encode: Change categorical data into numerical representations
+
+# Normalize
+df['normalized_column'] = (df['column_to_normalize'] - df['column_to_normalize'].min()) / (df['column_to_normalize'].max() - df['column_to_normalize'].min())
+
+# Encode
+df = pd.get_dummies(df, columns=['categorical_column'])
+
+
+. Data Validation:
+Validate Constraints: Ensure that the data follows business rules (e.g., age > 0).
+Cross-Field Validation: Validate data across different fields (e.g., start_date < end_date).
+python
+Copy code
+# Validate constraints
+df = df[df['age'] > 0]
+
+# Cross-field validation
+df = df[df['start_date'] < df['end_date']]
+
+++++++
+
+from google.cloud import storage
+import json
+import pandas as pd
+
+# Replace with your GCS bucket names
+source_bucket_name = "your-source-bucket"
+destination_bucket_name = "your-destination-bucket"
+
+# Initialize GCS client
+storage_client = storage.Client()
+
+# List all files in the source bucket
+source_bucket = storage_client.bucket(source_bucket_name)
+blobs = list(source_bucket.list_blobs())
+
+# Initialize a set to keep track of processed CSV files
+processed_csv_files = set()
+
+# Iterate through the files in the source bucket
+for blob in blobs:
+    file_name = blob.name
+    # Check if the file is a JSON file
+    if file_name.endswith(".json"):
+        json_schema = json.loads(blob.download_as_text())
+    elif file_name.endswith(".csv"):
+        # Check if a matching JSON schema exists for the CSV file
+        matching_json_name = file_name.replace(".csv", ".json")
+        matching_json_blob = source_bucket.blob(matching_json_name)
+        if matching_json_blob.exists():
+            # Load the JSON schema
+            json_schema = json.loads(matching_json_blob.download_as_text())
+
+            # Load the CSV data
+            csv_data = blob.download_as_text()
+
+            # Check if the CSV data matches the JSON schema
+            try:
+                df = pd.read_csv(pd.compat.StringIO(csv_data))
+                df.to_dict(orient="records")
+                jsonschema.validate(instance=df.to_dict(orient="records"), schema=json_schema)
+                print(f"CSV data in {file_name} matches the JSON schema.")
+                
+                # Move the JSON and CSV files to the destination bucket
+                destination_bucket = storage_client.bucket(destination_bucket_name)
+                destination_bucket.copy_blob(blob, destination_bucket, file_name)
+                destination_bucket.copy_blob(matching_json_blob, destination_bucket, matching_json_name)
+
+                # Add the CSV file to the processed set
+                processed_csv_files.add(file_name)
+
+            except (jsonschema.exceptions.ValidationError, pd.errors.ParserError) as e:
+                print(f"CSV data in {file_name} does not match the JSON schema:")
+                print(e)
+
+# List CSV files in the source bucket that did not have matching JSON schemas
+unprocessed_csv_files = set()
+for blob in blobs:
+    if blob.name.endswith(".csv") and blob.name not in processed_csv_files:
+        unprocessed_csv_files.add(blob.name)
+
+if unprocessed_csv_files:
+    print("CSV files without matching JSON schemas:")
+    for file_name in unprocessed_csv_files:
+        print(file_name)
+else:
+    print("All CSV files have matching JSON schemas or were processed.")
