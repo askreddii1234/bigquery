@@ -1,7 +1,5 @@
 {
     "project_id": "service-explore-labs-383615",
     "dataset_id": "loony_dataset",
-    "credentials_path": "/content/383615-5118216a9657.json",
-    "service_account_name": "your-service-account-name@your-project-id.iam.gserviceaccount.com",
     "input_file": "input.csv"
 }
