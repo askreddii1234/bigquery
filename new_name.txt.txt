@@ -1,0 +1,444 @@
+Google dataflow resource allocation . will it create separate resources for each dataflow job
+ChatGPT
+Google Cloud Dataflow, a managed service for executing a wide variety of data processing patterns, including ETL, batch computations, and continuous computation on streaming data, dynamically allocates resources based on the demands of the data processing job. When you submit a job to Dataflow, it automatically allocates and manages the underlying resources required to execute your job. Here's how resource allocation works in Dataflow:
+
+Dynamic Resource Allocation: Dataflow automatically scales the number of worker instances needed to run your job efficiently. This scaling is based on the complexity of your job and the data volume it needs to process. Dataflow's autoscaling feature adjusts the amount of compute resources allocated to your job in real time, scaling up to handle high workloads and scaling down as workloads decrease, optimizing cost and performance.
+
+Separate Resources for Each Job: Yes, Dataflow allocates separate resources for each job. Each Dataflow job runs in its own isolated environment, with its own set of resources. This isolation ensures that the performance of one job does not affect the performance of another. When you submit multiple Dataflow jobs, each one will have its own dynamically allocated resources based on its specific needs.
+
+Resource Types: The resources allocated for a Dataflow job typically include Compute Engine instances for executing your job's parallel operations, and other Google Cloud resources as needed, such as Cloud Storage for intermediate data storage and BigQuery for output data analysis. The type and amount of resources allocated can vary significantly based on the job's requirements.
+
+Customization and Optimization: While Dataflow provides sensible defaults for resource allocation and autoscaling, you can customize various aspects of resource allocation, such as the type of machine and the initial number of worker instances. This allows for optimization based on cost, performance, or other considerations specific to your workload.
+
+Dataflow's resource allocation model aims to provide a balance between performance and cost, automatically managing the underlying infrastructure so developers can focus on writing and deploying their data processing jobs without worrying about the operational aspects of resource management.
+
+User
+explain and what are the depencies for dataflow resource provision. it takes time for resource provision and take 1 minute time for data processing job
+ChatGPT
+Provisioning resources for a Google Cloud Dataflow job involves several steps and dependencies, which can contribute to the overall time it takes for a job to start processing data. Understanding these dependencies can help in optimizing job startup times and managing expectations regarding job execution. Here's a breakdown of what's involved and some of the key dependencies:
+
+1. Job Submission and Validation
+When you submit a Dataflow job, the first step is job submission and validation. Dataflow checks your pipeline code for errors and validates it against the Dataflow service. This step includes ensuring that the pipeline structure is correct, all necessary APIs are enabled in your Google Cloud project, and your account has the required permissions.
+
+2. Resource Allocation
+The next step is the actual resource allocation, which involves several sub-steps:
+
+Worker Allocation: Dataflow requests Compute Engine resources to run your job's worker instances. The time this takes can depend on the current demand and availability of Compute Engine resources in the selected region.
+Startup and Initialization: Once Compute Engine instances are allocated, they must be started up and initialized with the Dataflow worker environment. This includes installing necessary software, setting up networking, and applying any specified configurations.
+Staging: Your job's artifacts (code, files, and dependencies) are staged in Cloud Storage. If your job has a large number of dependencies or large files, this can take more time.
+3. Dependencies on Google Cloud Services
+Dataflow jobs often depend on other Google Cloud services, such as Cloud Storage for staging and data storage, BigQuery for data analysis, and Pub/Sub for streaming data sources. The availability and responsiveness of these services can also influence the time it takes to provision resources for a Dataflow job.
+
+4. Network and API Latencies
+Network latency and API call latencies can affect the time it takes to provision resources. This includes the time it takes for Google Cloud APIs to respond to requests for resource allocation, as well as the time it takes for network communications between different Google Cloud services.
+
+Optimization Tips
+Pre-Warm Your Environment: If you frequently run Dataflow jobs, consider keeping a minimum number of workers running to reduce startup times. This approach can be cost-effective if the alternative is frequently waiting for resources to provision.
+Optimize Your Pipeline: Ensure that your pipeline is as efficient as possible. Removing unnecessary steps or optimizing your code can reduce the overall execution time, making the provisioning time a smaller proportion of the total job execution time.
+Use Regional Endpoints: Selecting resources and services in the same region can reduce network latencies and improve the overall startup time.
+Monitor Quotas: Ensure you have sufficient quota for Compute Engine resources in your selected region. Hitting quota limits can delay or prevent resource allocation.
+Resource provisioning is a complex process that involves not just the allocation of compute resources but also the setup and initialization of the environment in which your Dataflow job will run. By understanding these dependencies and following best practices for optimization, you can help minimize startup times for your Dataflow jobs.
+
+User
+how to achive this ?? pls share code example : Pre-Warm Your Environment: If you frequently run Dataflow jobs, consider keeping a minimum number of workers running to reduce startup times. This approach can be cost-effective if the alternative is frequently waiting for resources to provision.
+ChatGPT
+To pre-warm your environment for Google Cloud Dataflow jobs, essentially, you aim to ensure that there is always a set of worker instances ready to take on work as soon as a job is submitted. This can significantly reduce the startup time for Dataflow jobs because the time-consuming process of provisioning and starting up new Compute Engine instances is minimized. Here's how you can achieve this:
+
+Step 1: Use the FlexRS (Flexible Resource Scheduling) Option for Batch Jobs
+If your Dataflow jobs are batch jobs, you can use the FlexRS option, which allows you to specify a flexible resource scheduling option. FlexRS jobs are queued and run when resources are available at a lower cost. While this doesn't pre-warm in the traditional sense, it's a cost-effective way to manage batch processing jobs.
+
+Step 2: Manually Specify the Number of Workers for Streaming Jobs
+For streaming jobs, where low latency and quick startup times are crucial, you can manually specify the number of workers or use the minimum number of workers setting to ensure that you have workers always on standby. Here's how to do it via the gcloud command line for a hypothetical streaming job:
+
+sh
+Copy code
+gcloud dataflow jobs run YOUR_JOB_NAME \
+    --gcs-location gs://YOUR_BUCKET_NAME/templates/YOUR_TEMPLATE_NAME \
+    --region YOUR_REGION \
+    --num-workers MIN_NUM_OF_WORKERS \
+    --max-workers MAX_NUM_OF_WORKERS \
+    --parameters \
+        parameter1=value1,\
+        parameter2=value2 \
+    --worker-machine-type YOUR_MACHINE_TYPE \
+    --autoscaling-algorithm=THROUGHPUT_BASED
+Replace YOUR_JOB_NAME, YOUR_BUCKET_NAME, YOUR_TEMPLATE_NAME, YOUR_REGION, MIN_NUM_OF_WORKERS, MAX_NUM_OF_WORKERS, YOUR_MACHINE_TYPE with your specific job and environment details.
+--num-workers specifies the initial number of workers Dataflow should start with. Setting this to a value greater than zero effectively pre-warms your environment by ensuring that workers are always available.
+--max-workers specifies the maximum number of workers that Dataflow is allowed to scale up to.
+--autoscaling-algorithm=THROUGHPUT_BASED is optional and specifies that the job should automatically scale the number of workers based on throughput, which can be helpful for managing costs and performance.
+Step 3: Use Dataflow Templates for Repeated Jobs
+If you have jobs that are run on a regular basis, consider using Dataflow templates. This allows you to pre-define and configure jobs, including the number of workers, so that they can be executed quickly with minimal setup time. The example above shows how you might run a job from a template with a predefined number of workers.
+
+Monitoring and Adjusting
+Monitor Performance: Use Google Cloud's monitoring tools to assess the performance of your Dataflow jobs and adjust the number of pre-warmed workers as necessary.
+Cost Management: Keep an eye on costs, as keeping workers running continuously will incur charges. Adjust the number of pre-warmed workers according to your budget and performance needs.
+By following these steps, you can effectively reduce the startup time for your Dataflow jobs, making your data processing workflows more efficient and responsive.
+
+User
+I could not see Pre-Warm Your Environment setup or code here
+ChatGPT
+Pre-warming your environment in Google Cloud Dataflow directly through code or a specific Dataflow API setting isn't a feature that's explicitly provided as of my last update. However, you can achieve a similar effect by ensuring that your Dataflow job is configured to start with a certain minimum number of workers and to use persistent resources effectively. This approach is more about strategic job configuration rather than a direct "pre-warm" capability.
+
+The idea is to configure your Dataflow jobs in such a way that they either:
+
+Start with a specified minimum number of workers that remain ready for processing, or
+Use a combination of Dataflow's autoscaling features and Compute Engine's capabilities to ensure resources are available in a more immediate fashion when jobs are launched.
+However, to implement a strategy that effectively keeps resources "warm," consider the following approach:
+
+1. Manually Setting the Minimum Number of Workers
+When submitting your Dataflow job, you can specify the minimum number of workers that the job should start with. This doesn't pre-warm workers before the job starts, but it does ensure that the job starts with more than the default number of workers, reducing the time it takes to scale up.
+
+Here's a simple example of how you might submit a job with a specified minimum number of workers using the gcloud command:
+
+sh
+Copy code
+gcloud dataflow jobs run <job-name> \
+    --gcs-location gs://<path-to-your-template> \
+    --region <region> \
+    --num-workers <minimum-number-of-workers> \
+    --max-workers <maximum-number-of-workers> \
+    --worker-machine-type <machine-type> \
+    --autoscaling-algorithm=THROUGHPUT_BASED
+This ensures that the job starts with a specified number of workers, but it doesn't keep these workers running before the job is submitted.
+
+2. Using Compute Engine Instances to Simulate Pre-Warming
+Another strategy could involve using Compute Engine instances directly to simulate a pre-warm environment. You could:
+
+Create a set of Compute Engine instances configured similarly to your Dataflow workers.
+Use startup scripts to install necessary dependencies and perform initial setup tasks.
+When ready to run a Dataflow job, you could then direct the work to these pre-warmed instances, if possible, through your job's configuration.
+This approach requires more manual management and isn't directly supported by Dataflow as a pre-warm strategy, but it could be used in scenarios where startup time is critical.
+
+3. Persistent Streaming Jobs
+For streaming jobs, instead of stopping and starting jobs, consider keeping them running continuously with the autoscaling feature enabled. This way, the job is always ready to process data, and you only pay for the compute resources used. You can adjust the scaling algorithm to ensure that there's a base level of processing power always available, and the system can scale up from that point as needed.
+
+Conclusion
+While there's no direct "pre-warm" feature in Dataflow, by carefully configuring your jobs and potentially leveraging Compute Engine resources, you can achieve a similar outcome. It's about balancing the readiness of resources against cost, depending on your specific use case and performance requirements.
+
+User
+how to achive this : Persistent Streaming Jobs ?
+ChatGPT
+Persistent streaming jobs in Google Cloud Dataflow are designed to run continuously, processing data in real-time as it arrives. These jobs are ideal for use cases such as real-time analytics, event-driven systems, and continuous ETL processes. To achieve persistent streaming jobs that run efficiently and cost-effectively, follow these steps:
+
+1. Set Up Your Streaming Pipeline
+First, ensure your Dataflow pipeline is designed for streaming by using the appropriate sources, such as Pub/Sub for real-time event data, and setting the pipeline to run in streaming mode. Here's a basic example in Java using the Apache Beam SDK (which Dataflow is based on):
+
+java
+Copy code
+PipelineOptions options = PipelineOptionsFactory.create();
+// Set streaming mode
+options.setStreaming(true);
+
+Pipeline p = Pipeline.create(options);
+
+// Example: Read from Pub/Sub and write to BigQuery
+p.apply("ReadFromPubSub", PubsubIO.readStrings().fromSubscription("your-subscription"))
+ .apply("ProcessData", ParDo.of(new DoFn<String, String>() {
+     @ProcessElement
+     public void processElement(ProcessContext c) {
+         // Your processing logic here
+     }
+ }))
+ .apply("WriteToBigQuery", BigQueryIO.writeTableRows()
+     .to("your-table")
+     .withSchema(yourSchema)
+     .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_IF_NEEDED)
+     .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND));
+
+p.run().waitUntilFinish();
+For Python, the setup is similar but with Python syntax and libraries.
+
+2. Enable Autoscaling
+To ensure your streaming job can handle varying loads efficiently, enable autoscaling. This allows Dataflow to automatically adjust the number of worker instances based on the current processing requirements. In the Dataflow SDK, autoscaling is enabled by default for streaming jobs.
+
+When you submit your job through gcloud command or through the Cloud Console, make sure to specify the autoscaling settings if needed, such as the minimum and maximum number of workers:
+
+bash
+Copy code
+gcloud dataflow jobs run JOB_NAME \
+    --region=REGION \
+    --template=TEMPLATE_PATH \
+    --parameters autoscalingAlgorithm=THROUGHPUT_BASED,minNumWorkers=MIN_WORKERS,maxNumWorkers=MAX_WORKERS
+3. Monitoring and Management
+Since the job is intended to run continuously, set up monitoring and logging to track the job's performance and health. Google Cloud offers Stackdriver Monitoring and Logging for this purpose. Set alerts for critical conditions, such as high backlog or worker failures.
+
+4. Update Your Pipeline Without Downtime
+For persistent streaming jobs, it's often necessary to update the pipeline without causing significant downtime or data loss. Google Cloud Dataflow supports updating existing streaming jobs by providing a new job that replaces the old one, carrying over state and processing where the previous job left off. Use the --update flag and provide the --jobName of the existing job when deploying the updated job.
+
+bash
+Copy code
+gcloud dataflow jobs update JOB_NAME \
+    --region=REGION \
+    --template=TEMPLATE_PATH \
+    --parameters autoscalingAlgorithm=THROUGHPUT_BASED,minNumWorkers=MIN_WORKERS,maxNumWorkers=MAX_WORKERS
+5. Cost Management
+To manage costs effectively while running persistent streaming jobs:
+
+Use autoscaling to adjust resources based on load.
+Review and optimize your pipeline's processing efficiency.
+Consider using cost-effective compute resources, like preemptible VMs, if they meet your reliability requirements.
+By following these steps, you can set up and maintain efficient, persistent streaming jobs in Google Cloud Dataflow, ensuring that your real-time data processing needs are met with scalability, reliability, and cost-effectiveness.
+
+User
+I need python examples
+ChatGPT
+For setting up a persistent streaming job in Google Cloud Dataflow using Python, you'll use the Apache Beam Python SDK. Below is a step-by-step example that demonstrates how to define a streaming pipeline, run it on Dataflow with autoscaling enabled, and ensure it's set up for continuous, persistent processing of streaming data.
+
+Step 1: Install Apache Beam
+First, ensure you have Apache Beam installed with the Google Cloud Dataflow runner:
+
+bash
+Copy code
+pip install apache-beam[gcp]
+Step 2: Define Your Streaming Pipeline
+Here's a simple Python script that creates a streaming pipeline reading from Google Cloud Pub/Sub and writing to Google Cloud BigQuery. This script demonstrates the basic structure; you'll need to adjust the PROJECT, BUCKET, SUBSCRIPTION, and TABLE variables to fit your project.
+
+python
+Copy code
+import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions
+from apache_beam.options.pipeline_options import StandardOptions
+from apache_beam.options.pipeline_options import GoogleCloudOptions
+
+# Replace these with your project info
+PROJECT = 'your-project-id'
+BUCKET = 'your-bucket-name'
+SUBSCRIPTION = 'projects/your-project-id/subscriptions/your-subscription-name'
+TABLE = 'your-project-id:your_dataset.your_table_name'
+
+# Define pipeline options
+options = PipelineOptions()
+google_cloud_options = options.view_as(GoogleCloudOptions)
+options.view_as(StandardOptions).streaming = True
+google_cloud_options.project = PROJECT
+google_cloud_options.job_name = 'your-job-name'
+google_cloud_options.staging_location = f'gs://{BUCKET}/staging'
+google_cloud_options.temp_location = f'gs://{BUCKET}/temp'
+options.view_as(StandardOptions).runner = 'DataflowRunner'
+
+# Define the pipeline
+def run():
+    with beam.Pipeline(options=options) as p:
+        (p | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(subscription=SUBSCRIPTION)
+           | 'ProcessData' >> beam.Map(lambda x: x.decode('utf-8'))  # Example processing
+           | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
+               TABLE,
+               schema='SCHEMA_DEFINITION',  # Define your schema
+               create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
+               write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND)
+         )
+
+if __name__ == '__main__':
+    run()
+Step 3: Run Your Pipeline on Dataflow
+To run this pipeline on Google Cloud Dataflow, execute the Python script you've just created. Ensure you have the necessary permissions and your Google Cloud SDK is set up correctly. The script itself contains the necessary configurations to use Dataflow as the runner, including enabling streaming mode.
+
+Additional Configurations for Autoscaling
+In the example above, autoscaling is enabled by default when you run the job on Dataflow. If you need to customize autoscaling parameters (like minimum or maximum number of workers), you can do so by adding additional options to your PipelineOptions. However, as of the latest Apache Beam versions, detailed autoscaling parameters need to be set via command line arguments or the Dataflow console/UI during job submission.
+
+Continuous Processing and Updates
+For a job to be persistent, it should ideally require minimal manual intervention. The example above is designed for continuous processing. If you need to update your streaming pipeline, use the Dataflow's job update feature, which allows you to modify the streaming job's pipeline without losing state or data. Note that updating a streaming job with significant changes to its structure or I/O may require stopping and restarting the job.
+
+To perform an update, you would modify your pipeline code as necessary and then use the gcloud command line tool to update the job, providing the --update flag and specifying the job ID of the existing job you wish to update.
+
+This example sets the foundation for creating persistent streaming jobs in Dataflow using Python. Remember to monitor your job's performance and cost, 
+adjusting configurations as necessary to optimize both.
+
+
+
+++++++++++++++++++++++
+
+
+Revised Approach
+Given the STDOUT doesn't seem to contain the expected job creation confirmation (or it's not being captured due to how output is handled), and the STDERR clearly contains the necessary information, it's advisable to search within both outputs. Here's a modification to ensure the script checks both:
+
+python
+Copy code
+import subprocess
+from datetime import datetime
+import re
+
+def run_dataflow_job():
+    start_time = datetime.now()
+    print(f"Job submission started at: {start_time}")
+
+    command = """
+    python3 -m apache_beam.examples.wordcount \\
+    --region us-central1 \\
+    --input gs://dataflow-samples/shakespeare/kinglear.txt \\
+    --output gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/results/output \\
+    --runner DataflowRunner \\
+    --project dbt-analytics-engineer-403622 \\
+    --temp_location gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/temp/ \\
+    --worker_machine_type n1-standard-1 \\
+    --num_workers 1 \\
+    --diskSizeGb 4 \\
+    --region europe-west1 \\
+    --usePublicIps false \\
+    --additional-experiments use_runner_v2 \\
+    --autoscaling_algorithm THROUGHPUT_BASED
+    """.strip()
+
+    # Run the command and capture output
+    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+
+    combined_output = result.stdout + '\n' + result.stderr
+    print("Combined STDOUT and STDERR:", combined_output)
+
+    # Try to match the job ID in the combined output
+    job_id_search = re.search(r'Created job with id: \[(.+?)\]', combined_output)
+    if job_id_search:
+        job_id = job_id_search.group(1)
+        print(f"Dataflow job ID: {job_id}")
+        return start_time, job_id
+    else:
+        print("Dataflow job ID not found.")
+        return start_time, None
+
+if __name__ == "__main__":
+    start_time, job_id = run_dataflow_job()
+    if job_id:
+        print(f"Successfully captured Dataflow job ID: {job_id}")
+    else:
+        print(f"Failed to capture Dataflow job ID.")
+Key Changes
+Combined STDOUT and STDERR: This script now combines STDOUT and STDERR for the regex search, accommodating the possibility that relevant output may appear in either stream.
+Debugging Output: By printing the combined output, you can manually verify the presence of the job ID and ensure the regex is correctly formulated to capture it.
+This revision aims to ensure the script can handle various output scenarios more robustly, increasing the likelihood of successfully capturing the Dataflow job ID.
+
+User
+but it is not capturing data processing time and resource provision time
+ChatGPT
+To accurately capture both the data processing time and the resource provisioning time for your Apache Beam job on Google Cloud Dataflow, you will need to adjust your approach slightly. Since these metrics are not directly provided in the command line output, you'll have to infer them from available information. Here's how you can do it:
+
+Resource Provisioning Time: This can be inferred from the time the job is submitted until the job state changes to running. You can query the Dataflow API to check the job's status periodically after submission.
+
+Data Processing Time: This is the duration from when the job starts running until it finishes. Again, periodic checks to the Dataflow API can help determine when the job transitions from running to done.
+
+To implement this, you'll need to use the Google Cloud Dataflow API to query job status. The following approach modifies your script to include these steps:
+
+Prerequisites
+Make sure you have the Google Cloud SDK and Python client libraries installed and authenticated.
+Install the Google Cloud Dataflow client library if you haven't already: pip install google-cloud-dataflow.
+Script to Capture Times
+The script below demonstrates how you might implement these checks. Note that this script assumes you have google-cloud-dataflow installed and are authenticated to access your Google Cloud project.
+
+python
+Copy code
+import time
+from datetime import datetime
+from google.cloud import dataflow_v1beta3 as dataflow
+from google.api_core.exceptions import GoogleAPICallError
+
+def get_job_status(project_id, location, job_id):
+    client = dataflow.JobsV1Beta3Client()
+    job_name = f"projects/{project_id}/locations/{location}/jobs/{job_id}"
+    try:
+        job = client.get_job(name=job_name)
+        return job.current_state
+    except GoogleAPICallError as e:
+        print(f"Error fetching job details: {e}")
+        return None
+
+def monitor_job_until_running(project_id, location, job_id):
+    while True:
+        status = get_job_status(project_id, location, job_id)
+        if status in ["JOB_STATE_RUNNING", "JOB_STATE_DONE"]:
+            return status
+        time.sleep(10)  # Poll every 10 seconds
+
+def monitor_job_until_done(project_id, location, job_id):
+    while True:
+        status = get_job_status(project_id, location, job_id)
+        if status == "JOB_STATE_DONE":
+            return
+        time.sleep(10)  # Poll every 10 seconds
+
+def main():
+    start_time = datetime.now()
+    project_id = "your-project-id"
+    location = "europe-west1"  # Adjust based on your job's location
+    job_id = "your-job-id"  # Use the job ID obtained from your submission script
+
+    print(f"Job submitted at: {start_time}")
+
+    # Wait until the job is running
+    job_running_status = monitor_job_until_running(project_id, location, job_id)
+    if job_running_status == "JOB_STATE_RUNNING":
+        running_time = datetime.now()
+        print(f"Job started running at: {running_time}")
+        provisioning_time = running_time - start_time
+        print(f"Provisioning time: {provisioning_time}")
+
+    # Then, wait until the job is done
+    monitor_job_until_done(project_id, location, job_id)
+    end_time = datetime.now()
+    print(f"Job finished at: {end_time}")
+    processing_time = end_time - running_time
+    print(f"Processing time: {processing_time}")
+    total_time = end_time - start_time
+    print(f"Total time from submission to completion: {total_time}")
+
+if __name__ == "__main__":
+    main()
+Explanation
+get_job_status: Queries the Dataflow API for the current status of the job.
+monitor_job_until_running and monitor_job_until_done: Poll the job status until it changes to running or done, respectively.
+main: Orchestrates the process, starting from job submission, monitoring until the job starts running (to calculate provisioning time), and then until the job completes (to calculate processing time).
+Adjustments Needed
+Replace "your-project-id", "europe-west1", and "your-job-id" with your actual project ID, job location, and job ID.
+This script requires you to manually insert the job ID obtained from your job submission output. You might automate job submission within this script for a more integrated approach, or extract the job ID programmatically as previously discussed.
+This approach should provide a good foundation for capturing the resource provisioning and data processing times for your Dataflow jobs, leveraging the Google Cloud Dataflow API for accurate monitoring.
+
+
++++++++++++++++++++
+
+import subprocess
+from datetime import datetime
+import re
+
+def run_dataflow_job():
+    start_time = datetime.now()
+    print(f"Job submission started at: {start_time}")
+
+    # Ensure your command string is correctly formatted and all backslashes are properly used for line continuation
+    command = """
+    python3 -m apache_beam.examples.wordcount \\
+    --region us-central1 \\
+    --input gs://dataflow-samples/shakespeare/kinglear.txt \\
+    --output gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/results/output \\
+    --runner DataflowRunner \\
+    --project dbt-analytics-engineer-403622 \\
+    --temp_location gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/temp/ \\
+    --worker_machine_type n1-standard-1 \\
+    --num_workers 1 \\
+    --diskSizeGb 4 \\
+    --region europe-west1 \\
+    --usePublicIps false \\
+    --additional-experiments use_runner_v2 \\
+    --autoscaling_algorithm THROUGHPUT_BASED
+    """.strip()
+
+    # Run the command and capture output
+    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+
+    print("Command Output (STDOUT):", result.stdout)
+    if result.stderr:
+        print("Error Output (STDERR):", result.stderr)
+
+    # Updated regex to match the log output format for the job ID
+    job_id_search = re.search(r'Created job with id: \[(.+?)\]', result.stdout)
+    if job_id_search:
+        job_id = job_id_search.group(1)
+        print(f"Dataflow job ID: {job_id}")
+        return start_time, job_id
+    else:
+        print("Dataflow job ID not found.")
+        return start_time, None
+
+if __name__ == "__main__":
+    start_time, job_id = run_dataflow_job()
+    if job_id:
+        print(f"Successfully captured Dataflow job ID: {job_id}")
+    else:
+        print(f"Failed to capture Dataflow job ID.")
