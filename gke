@@ -1,0 +1,224 @@
+import subprocess
+import time
+from datetime import datetime
+
+def run_dataflow_job():
+    start_time = datetime.now()
+    print(f"Job started at: {start_time}")
+
+    command = """
+    python3 -m apache_beam.examples.wordcount \
+    --region europe-west1 \
+    --input gs://dataflow-samples/shakespeare/kinglear.txt \
+    --output gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/results/output \
+    --runner DataflowRunner \
+    --project dbt-analytics-engineer-403622 \
+    --temp_location gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/temp/ \
+    --workerHarnessContainerImage gcr.io/dbt-analytics-engineer-403622/dataflow_test_custom_image:latest \
+    --worker_machine_type n1-standard-4 \
+    --num_workers 4 \
+    --diskSizeGb 16 \
+    --region europe-west1 \
+    --usePublicIps false \
+    --additional-experiments use_runner_v2 \
+    """
+    subprocess.run(command, shell=True, check=True)
+
+    end_time = datetime.now()
+    print(f"Job finished at: {end_time}")
+
+    execution_time = end_time - start_time
+    print(f"Total execution time: {execution_time}")
+
+if __name__ == "__main__":
+    run_dataflow_job()
+
+
++++
+
+from google.cloud import dataflow_v1beta3
+
+client = dataflow_v1beta3.JobsV1Beta3Client()
+
+job_name = "projects/my-project/locations/us-central1/jobs/my-job"
+client.cancel_job(name=job_name)
+
+++++++++++++++
+import subprocess
+import time
+from datetime import datetime
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+def run_dataflow_job():
+    start_time = datetime.now()
+    logging.info(f"Job started at: {start_time}")
+
+    command = """
+    python3 -m apache_beam.examples.wordcount \
+    --region europe-west1 \
+    --input gs://dataflow-samples/shakespeare/kinglear.txt \
+    --output gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/results/output \
+    --runner DataflowRunner \
+    --project dbt-analytics-engineer-403622 \
+    --temp_location gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/temp/ \
+    --workerHarnessContainerImage gcr.io/dbt-analytics-engineer-403622/dataflow_test_custom_image:latest \
+    --worker_machine_type n1-standard-1 \
+    --num_workers 2 \
+    --diskSizeGb 16 \
+    --region europe-west1 \
+    --usePublicIps false \
+	--worker_accelerator=nvidia-tesla-k80:1
+    --additional-experiments use_runner_v2 \
+    """
+    subprocess.run(command, shell=True, check=True)
+
+    end_time = datetime.now()
+    logging.info(f"Job finished at: {end_time}")
+
+    execution_time = end_time - start_time
+    logging.info(f"Total execution time: {execution_time}")
+
+if __name__ == "__main__":
+    run_dataflow_job()
+
+
+
+++++++++++++++++++
+from flask import Flask, jsonify
+import subprocess
+
+app = Flask(__name__)
+
+@app.route('/run-dbt', methods=['POST'])
+def run_dbt():
+    try:
+        # Specify the path to your dbt project directory
+        dbt_project_dir = '/path/to/your/dbt/project'
+        
+        # Run the dbt command
+        result = subprocess.run(['dbt', 'run', '--project-dir', dbt_project_dir], capture_output=True, text=True)
+        
+        # Check if the dbt command was successful
+        if result.returncode == 0:
+            return jsonify({'message': 'DBT run successful', 'output': result.stdout}), 200
+        else:
+            return jsonify({'message': 'DBT run failed', 'error': result.stderr}), 500
+    except Exception as e:
+        return jsonify({'message': 'An error occurred', 'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+++++++++++++++++++++++++++++++++++
+To call a Google Dataflow template programmatically, you can use the templates.launch method. This method takes a template ID and a set of parameters as its inputs. The template ID is the ID of the template that you want to run, and the parameters are the values that you want to pass to the template.
+
+For example, to run the WordCount template, you would use the following code:
+
+from google.cloud import dataflow_v1beta3
+
+client = dataflow_v1beta3.TemplatesServiceClient()
+
+project_id = "your-project-id"
+location = "us-central1"
+template_id = "WordCount"
+
+parameters = {
+    "inputFile": "gs://dataflow-samples/shakespeare/kinglear.txt",
+    "output": "gs://your-bucket/output",
+}
+
+response = client.launch_template(
+    request={
+        "project_id": project_id,
+        "location": location,
+        "gcs_path": f"gs://dataflow-templates-LOCATION/latest/{template_id}",
+        "parameters": parameters,
+    }
+)
+
+print(response)
+This code will create a Dataflow job that runs the WordCount template. The job will read the input file from gs://dataflow-samples/shakespeare/kinglear.txt and write the output to gs://your-bucket/output .
+
+
++++++++++++++
+
+/home/sureshreddy_ravada/vdataflow/bin/python "/home/sureshreddy_ravada/vdataflow/import subprocess.py"
+Job started at: 2024-02-14 23:54:11.950311
+INFO:apache_beam.internal.gcp.auth:Setting socket default timeout to 60 seconds.
+INFO:apache_beam.internal.gcp.auth:socket default timeout is 60.0 seconds.
+WARNING:google.auth._default:No project ID could be determined. Consider running `gcloud config set project` or setting the GOOGLE_CLOUD_PROJECT environment variable
+INFO:apache_beam.runners.dataflow.dataflow_runner:Pipeline has additional dependencies to be installed in SDK worker container, consider using the SDK container image pre-building workflow to avoid repetitive installations. Learn more on https://cloud.google.com/dataflow/docs/guides/using-custom-containers#prebuild
+INFO:root:Using provided Python SDK container image: gcr.io/cloud-dataflow/v1beta3/beam_python3.9_sdk:2.53.0
+INFO:root:Python SDK container image set to "gcr.io/cloud-dataflow/v1beta3/beam_python3.9_sdk:2.53.0" for Docker environment
+INFO:apache_beam.runners.portability.fn_api_runner.translations:==================== <function pack_combiners at 0x78c59a10d8b0> ====================
+INFO:apache_beam.runners.portability.fn_api_runner.translations:==================== <function sort_stages at 0x78c59a10e0d0> ====================
+INFO:apache_beam.runners.dataflow.internal.apiclient:Starting GCS upload to gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/temp/beamapp-sureshreddyravada-0214235414-779464-uqms69kl.1707954854.779629/pickled_main_session...
+INFO:apache_beam.runners.dataflow.internal.apiclient:Completed GCS upload to gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/temp/beamapp-sureshreddyravada-0214235414-779464-uqms69kl.1707954854.779629/pickled_main_session in 0 seconds.
+INFO:apache_beam.runners.dataflow.internal.apiclient:Starting GCS upload to gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/temp/beamapp-sureshreddyravada-0214235414-779464-uqms69kl.1707954854.779629/pipeline.pb...
+INFO:apache_beam.runners.dataflow.internal.apiclient:Completed GCS upload to gs://dataflow-apache-quickstart_dbt-analytics-engineer-403622/temp/beamapp-sureshreddyravada-0214235414-779464-uqms69kl.1707954854.779629/pipeline.pb in 0 seconds.
+WARNING:apache_beam.options.pipeline_options:Unknown pipeline options received: --workerHarnessContainerImage,gcr.io/dbt-analytics-engineer-403622/dataflow_test_custom_image:latest,--diskSizeGb,16,--usePublicIps,false,--additional-experiments,use_runner_v2. Ignore if flags are used for internal purposes.
+WARNING:apache_beam.options.pipeline_options:Unknown pipeline options received: --workerHarnessContainerImage,gcr.io/dbt-analytics-engineer-403622/dataflow_test_custom_image:latest,--diskSizeGb,16,--usePublicIps,false,--additional-experiments,use_runner_v2. Ignore if flags are used for internal purposes.
+INFO:apache_beam.runners.dataflow.internal.apiclient:Create job: <Job
+ clientRequestId: '20240214235414780556-3683'
+ createTime: '2024-02-14T23:54:17.021005Z'
+ currentStateTime: '1970-01-01T00:00:00Z'
+ id: '2024-02-14_15_54_16-12059760229275662936'
+ location: 'europe-west1'
+ name: 'beamapp-sureshreddyravada-0214235414-779464-uqms69kl'
+ projectId: 'dbt-analytics-engineer-403622'
+ stageStates: []
+ startTime: '2024-02-14T23:54:17.021005Z'
+ steps: []
+ tempFiles: []
+ type: TypeValueValuesEnum(JOB_TYPE_BATCH, 1)>
+INFO:apache_beam.runners.dataflow.internal.apiclient:Created job with id: [2024-02-14_15_54_16-12059760229275662936]
+INFO:apache_beam.runners.dataflow.internal.apiclient:Submitted job: 2024-02-14_15_54_16-12059760229275662936
+INFO:apache_beam.runners.dataflow.internal.apiclient:To access the Dataflow monitoring console, please navigate to https://console.cloud.google.com/dataflow/jobs/europe-west1/2024-02-14_15_54_16-12059760229275662936?project=dbt-analytics-engineer-403622
+INFO:apache_beam.runners.dataflow.dataflow_runner:Job 2024-02-14_15_54_16-12059760229275662936 is in state JOB_STATE_PENDING
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:54:20.308Z: JOB_MESSAGE_BASIC: Worker configuration: n1-standard-4 in europe-west1-b.
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:54:22.621Z: JOB_MESSAGE_BASIC: Executing operation Read/Read/Impulse+Read/Read/EmitSource+ref_AppliedPTransform_Read-Read-SDFBoundedSourceReader-ParDo-SDFBoundedSourceDoFn-_7/PairWithRestriction+ref_AppliedPTransform_Read-Read-SDFBoundedSourceReader-ParDo-SDFBoundedSourceDoFn-_7/SplitWithSizing
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:54:22.641Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/DoOnce/Impulse+Write/Write/WriteImpl/DoOnce/FlatMap(<lambda at core.py:3774>)+Write/Write/WriteImpl/DoOnce/Map(decode)+Write/Write/WriteImpl/InitializeWrite
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:54:22.675Z: JOB_MESSAGE_BASIC: Starting 4 workers in europe-west1-b...
+INFO:apache_beam.runners.dataflow.dataflow_runner:Job 2024-02-14_15_54_16-12059760229275662936 is in state JOB_STATE_RUNNING
+WARNING:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:55:06.459Z: JOB_MESSAGE_WARNING: Autoscaling: Startup of the worker pool in zone europe-west1-b reached 3 workers, but the goal was 4 workers. The service will retry. Please refer to https://cloud.google.com/dataflow/docs/guides/common-errors#worker-pool-failure for help troubleshooting. QUOTA_EXCEEDED: Instance 'beamapp-sureshreddyravada-02141554-8rj2-harness-pw9k' creation failed: Quota 'CPUS' exceeded.  Limit: 8.0 in region europe-west1.
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:04.202Z: JOB_MESSAGE_BASIC: All workers have finished the startup processes and began to receive work requests.
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:07.092Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/DoOnce/Impulse+Write/Write/WriteImpl/DoOnce/FlatMap(<lambda at core.py:3774>)+Write/Write/WriteImpl/DoOnce/Map(decode)+Write/Write/WriteImpl/InitializeWrite
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:07.181Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/WriteBundles/View-python_side_input0
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:07.197Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/FinalizeWrite/View-python_side_input0
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:07.204Z: JOB_MESSAGE_BASIC: Finished operation Read/Read/Impulse+Read/Read/EmitSource+ref_AppliedPTransform_Read-Read-SDFBoundedSourceReader-ParDo-SDFBoundedSourceDoFn-_7/PairWithRestriction+ref_AppliedPTransform_Read-Read-SDFBoundedSourceReader-ParDo-SDFBoundedSourceDoFn-_7/SplitWithSizing
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:07.215Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/PreFinalize/View-python_side_input0
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:07.276Z: JOB_MESSAGE_BASIC: Executing operation GroupAndSum/GroupByKey/Create
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:07.298Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/WriteBundles/View-python_side_input0
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:07.316Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/FinalizeWrite/View-python_side_input0
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:07.330Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/PreFinalize/View-python_side_input0
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:08.172Z: JOB_MESSAGE_BASIC: Finished operation GroupAndSum/GroupByKey/Create
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:08.239Z: JOB_MESSAGE_BASIC: Executing operation ref_AppliedPTransform_Read-Read-SDFBoundedSourceReader-ParDo-SDFBoundedSourceDoFn-_7/ProcessElementAndRestrictionWithSizing+Split+PairWithOne+GroupAndSum/GroupByKey+GroupAndSum/Combine/Partial+GroupAndSum/GroupByKey/Write
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:11.823Z: JOB_MESSAGE_BASIC: Finished operation ref_AppliedPTransform_Read-Read-SDFBoundedSourceReader-ParDo-SDFBoundedSourceDoFn-_7/ProcessElementAndRestrictionWithSizing+Split+PairWithOne+GroupAndSum/GroupByKey+GroupAndSum/Combine/Partial+GroupAndSum/GroupByKey/Write
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:11.862Z: JOB_MESSAGE_BASIC: Executing operation GroupAndSum/GroupByKey/Close
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:12.021Z: JOB_MESSAGE_BASIC: Finished operation GroupAndSum/GroupByKey/Close
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:12.064Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/GroupByKey/Create
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:12.178Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/GroupByKey/Create
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:12.260Z: JOB_MESSAGE_BASIC: Executing operation GroupAndSum/GroupByKey/Read+GroupAndSum/Combine+GroupAndSum/Combine/Extract+Format+Write/Write/WriteImpl/WindowInto(WindowIntoFn)+Write/Write/WriteImpl/WriteBundles+Write/Write/WriteImpl/Pair+Write/Write/WriteImpl/GroupByKey/Write
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:14.698Z: JOB_MESSAGE_BASIC: Finished operation GroupAndSum/GroupByKey/Read+GroupAndSum/Combine+GroupAndSum/Combine/Extract+Format+Write/Write/WriteImpl/WindowInto(WindowIntoFn)+Write/Write/WriteImpl/WriteBundles+Write/Write/WriteImpl/Pair+Write/Write/WriteImpl/GroupByKey/Write
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:14.737Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/GroupByKey/Close
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:15.008Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/GroupByKey/Close
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:15.050Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/GroupByKey/Read+Write/Write/WriteImpl/Extract
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:18.862Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/GroupByKey/Read+Write/Write/WriteImpl/Extract
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:18.942Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/FinalizeWrite/View-python_side_input1
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:18.959Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/PreFinalize/View-python_side_input1
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:19.060Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/FinalizeWrite/View-python_side_input1
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:19.082Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/PreFinalize/View-python_side_input1
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:19.149Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/PreFinalize
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:27.060Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/PreFinalize
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:27.145Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/FinalizeWrite/View-python_side_input2
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:27.265Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/FinalizeWrite/View-python_side_input2
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:27.350Z: JOB_MESSAGE_BASIC: Executing operation Write/Write/WriteImpl/FinalizeWrite
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:32.196Z: JOB_MESSAGE_BASIC: Finished operation Write/Write/WriteImpl/FinalizeWrite
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:57:32.850Z: JOB_MESSAGE_BASIC: Stopping worker pool...
+INFO:apache_beam.runners.dataflow.dataflow_runner:2024-02-14T23:58:09.276Z: JOB_MESSAGE_BASIC: Worker pool stopped.
+INFO:apache_beam.runners.dataflow.dataflow_runner:Job 2024-02-14_15_54_16-12059760229275662936 is in state JOB_STATE_DONE
+Job finished at: 2024-02-14 23:58:17.527709
+Total execution time: 0:04:05.577398
+(vdataflow) sureshreddy_ravada@cloudshell:~/vdataflow$ 
