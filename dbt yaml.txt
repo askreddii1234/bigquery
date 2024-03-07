@@ -1,0 +1,23 @@
+your_project:
+  target: '{{ env_var("DBT_TARGET") }}'
+  outputs:
+    dev:
+      type: <database_type>
+      ...
+      schema: dev_schema
+      threads: 4
+      ...
+
+    int:
+      type: <database_type>
+      ...
+      schema: int_schema
+      threads: 6
+      ...
+
+    prod:
+      type: <database_type>
+      ...
+      schema: prod_schema
+      threads: 8
+      ...
