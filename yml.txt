@@ -1,0 +1,66 @@
+Expanding on the example provided for configuring a dbt project for an INT environment, we can further elaborate on the use of variables to manage environmental differences. The dbt_project.yml file should be environment-agnostic, meaning it doesn't hardcode any values that are specific to a development, staging, or production environment. Instead, you can use vars to define environment-specific variables.
+
+Here's an expanded example where we're also including hypothetical model configurations that might differ between environments:
+
+dbt_project.yml:
+
+yaml
+Copy code
+name: 'your_project'
+version: '1.0.0'
+config-version: 2
+
+vars:
+  schema_name: "{{ target.schema }}"
+  data_source: "{{ var('data_source', 'default_source') }}"
+
+models:
+  your_project:
+    # default configuration for models
+    +schema: "{{ var('schema_name', 'default_schema') }}"
+    +materialized: "{{ var('materialization_strategy', 'view') }}"
+    staging:
+      +materialized: view
+      +tags: ["staging", "base"]
+    marts:
+      +materialized: table
+      +tags: ["marts"]
+      sales:
+        +materialized: "{{ var('sales_materialization', 'table') }}"
+        +tags: ["sales_mart"]
+      marketing:
+        +materialized: incremental
+        +unique_key: marketing_id
+        +tags: ["marketing_mart"]
+In this expanded dbt_project.yml example, we've included the following elements:
+
+A vars section that defines default values for schema_name and data_source.
+A models section with default schema and materialization configurations.
+Two subdirectories within models (staging and marts) with their own specific configurations.
+Within marts, further divisions into sales and marketing with model-specific configurations.
+To override these settings in the INT environment, you would adjust your profiles.yml:
+
+profiles.yml (for INT environment):
+
+yaml
+Copy code
+your_project:
+  target: int
+  outputs:
+    int:
+      type: <database_type>
+      threads: 4
+      ...
+      schema: int_schema
+      vars:
+        schema_name: int_schema
+        materialization_strategy: table
+        sales_materialization: incremental
+        data_source: int_data_source
+In the profiles.yml:
+
+We set the target to int.
+We've overridden the default schema_name to be int_schema.
+We've set the materialization_strategy for most models to table by default, except for the sales models where we've chosen incremental.
+We've changed the data_source variable to int_data_source to point to a different data source that is specific to the INT environment.
+By using this method, you can easily switch your dbt project's behavior between environments by simply changing the target when invoking dbt commands. The use of variables and environment-specific profile configurations allows for the flexibility needed to manage complex projects across multiple stages of deployment.
