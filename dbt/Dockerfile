@@ -24,3 +24,6 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Set the entrypoint to your script. This will run when the container starts.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+# Keep the container running (if necessary)
+#tail -f /dev/null
