@@ -164,3 +164,83 @@ Deployment Considerations:
 Ensure that your Flask application and the script are correctly configured and that the script is accessible and executable within your container.
 As before, make sure your Flask container has the necessary permissions to execute DBT commands and access any required resources.
 This approach is straightforward and effective for simple use cases. However, for more complex scenarios involving multiple parameters or security concerns, consider using POST requests with JSON payloads or implementing additional authentication and authorization mechanisms.
+
+
+++++++++++++
+
+from flask import Flask, jsonify
+import subprocess
+import os
+
+app = Flask(__name__)
+
+def execute_dbt_command(command, env):
+    """
+    Execute a dbt command with environment variables, and return a detailed response based on the command's success or failure.
+    """
+    env_vars = {
+        'DBT_TARGET_ENVIRONMENT': env,
+        # Set additional environment variables here as needed
+    }
+    command_to_run = f"dbt {command} --profiles-dir /usr/src/app --target $DBT_TARGET_ENVIRONMENT"
+
+    try:
+        output = subprocess.check_output(['/bin/bash', '-c', command_to_run], env={**env_vars, **os.environ}, stderr=subprocess.STDOUT)
+        # If the command is successful, return its output with a 200 status code
+        return jsonify({"status": "success", "output": output.decode()}), 200
+    except subprocess.CalledProcessError as e:
+        # Parse the error output to determine the appropriate response
+        error_output = e.output.decode()
+        
+        # Example of customizing the response based on known error patterns
+        if "Compilation Error" in error_output:
+            status_code = 400  # Bad Request
+        elif "Test Failure" in error_output:
+            status_code = 422  # Unprocessable Entity
+        else:
+            status_code = 500  # Internal Server Error for unspecified errors
+        
+        return jsonify({"status": "error", "error": error_output}), status_code
+
+@app.route('/<command>-dbt/<env>', methods=['GET'])
+def handle_dbt_command(command, env):
+    # Validate command
+    if command not in ["run", "debug", "test", "compile"]:
+        return jsonify({"error": "Invalid command"}), 400
+    return execute_dbt_command(command, env)
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0')
+
+
+++++
+
+from flask import Flask, request, jsonify
+import subprocess
+import os
+
+app = Flask(__name__)
+
+@app.route('/run-script', methods=['POST'])
+def run_script():
+    # Get environment from JSON data
+    data = request.get_json()
+    env = data.get('env', 'int')  # Default to 'int' if not specified
+
+    # Set the environment variable based on the JSON parameter
+    env_vars = {
+        'DBT_TARGET_ENVIRONMENT': env,
+        # Include other environment-specific variables here
+    }
+
+    try:
+        # Pass the environment variables to the subprocess
+        output = subprocess.check_output(['/bin/bash', '-c', 'source /path/to/your/script.sh'], env={**env_vars, **os.environ}, stderr=subprocess.STDOUT)
+        return output.decode(), 200
+    except subprocess.CalledProcessError as e:
+        return e.output.decode(), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0')
+
+
