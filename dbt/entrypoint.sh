@@ -243,4 +243,164 @@ def run_script():
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
 
++++++++++++++++++++++++++++++++++++++++++=
 
+Modifying the Shell Script to Accept Arguments
+First, let's modify your shell script to accept model names as arguments. You'll append these model names to the dbt run command. Here's how you could adjust your script (let's call it run_dbt_models.sh):
+
+bash
+Copy code
+#!/bin/bash
+set -e
+
+# Listing all files and directories in /usr/src/app for debugging
+echo "Listing all files and directories in /usr/src/app:"
+find /usr/src/app -print
+
+# Optionally, explicitly check for the presence of key dbt files
+echo "Checking for essential dbt files:"
+[[ -f /usr/src/app/dbt_project.yml ]] && echo "Found dbt_project.yml" || echo "dbt_project.yml is missing"
+[[ -f /usr/src/app/profiles.yml ]] && echo "Found profiles.yml" || echo "profiles.yml is missing"
+
+# Set environment variables for the INT environment
+export DBT_TARGET_ENVIRONMENT=int
+export GCP_PROJECT_ID=dbt-analytics-engineer-403622
+export DBT_INT_DATASET=dbt_stage
+#export GOOGLE_APPLICATION_CREDENTIALS=/path/to/int/service/account/key.json
+
+# Run dbt models. If no models are specified, run all models.
+if [ "$#" -eq 0 ]; then
+    dbt run --profiles-dir /usr/src/app --target $DBT_TARGET_ENVIRONMENT
+else
+    dbt run --profiles-dir /usr/src/app --target $DBT_TARGET_ENVIRONMENT -m $@
+fi
+
+# Optionally, display the log file for debugging
+cat /usr/src/app/dbt_run_log.txt
+This modified script now checks if any arguments (model names) are passed to it. If arguments are provided, it runs those specific models. Otherwise, it runs all models.
+
+Modifying the Flask Application
+Next, update the Flask application to run this script with model names as arguments. Here's the adjusted route in the Flask app:
+
+python
+Copy code
+from flask import Flask, request, jsonify
+import subprocess
+
+app = Flask(__name__)
+
+@app.route('/run-dbt-model', methods=['GET'])
+def run_dbt_model():
+    # Retrieve model name(s) from query parameters
+    models = request.args.get('models', default="", type=str)  # Default to empty string to run all models if none are specified
+    models = models.split(",")  # Assuming models are comma-separated
+    
+    script_path = "./run_dbt_models.sh"
+    
+    try:
+        # Run the script with models as arguments
+        result = subprocess.run([script_path] + models, capture_output=True, text=True, check=True)
+        
+        return jsonify({"success": True, "message": "DBT model(s) executed successfully", "output": result.stdout}), 200
+    except subprocess.CalledProcessError as e:
+        return jsonify({"success": False, "message": "DBT model execution failed", "error": e.stderr}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0')
+This Flask route now takes a models query parameter, which can be a comma-separated list of model names, and passes them as arguments to your shell script. If no models are specified, the script defaults to running all models.
+
+Usage
+To run specific models, you would access the Flask route like this:
+
+php
+Copy code
+http://<flask_app_host>:<port>/run-dbt-model?models=model1,model2
+This setup gives you the flexibility to run specific dbt models through an HTTP interface while keeping the logic of setting environment variables and checking for essential files within your shell script.
+
+User
+can also add commands like dbt debug , dbt compile to test the connectivity between dbt & ig Query
+ChatGPT
+To extend the functionality of your Flask application to support other dbt commands like dbt debug and dbt compile, which can be useful for testing connectivity and preparing SQL from models without executing them, you can modify the application to accept a command type as part of the request. Based on this command type, the application will execute the corresponding dbt operation.
+
+Let's modify the Flask application to include these capabilities. This approach involves:
+
+Accepting a command parameter in the request that specifies which dbt command to run (run, debug, compile, etc.).
+Depending on the command, the application will construct and execute the appropriate dbt command.
+For simplicity, this example will assume that the models parameter is only applicable for the dbt run and dbt compile commands.
+Modified Flask Application
+python
+Copy code
+from flask import Flask, request, jsonify
+import subprocess
+
+app = Flask(__name__)
+
+@app.route('/dbt-operation', methods=['GET'])
+def dbt_operation():
+    # Retrieve the command type (run, debug, compile)
+    command_type = request.args.get('command', default=None, type=str)
+    # Retrieve model name(s) for run and compile commands
+    models = request.args.get('models', default="", type=str)
+    
+    if command_type not in ['run', 'debug', 'compile']:
+        return jsonify({"success": False, "message": "Unsupported command type"}), 400
+    
+    script_path = "./dbt_wrapper.sh"
+    models_list = models.split(",") if models else []
+    
+    try:
+        # Prepare the command
+        if command_type in ['run', 'compile']:
+            command = [script_path, command_type] + models_list
+        else:
+            command = [script_path, command_type]
+        
+        # Execute the command
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        
+        return jsonify({"success": True, "message": f"DBT {command_type} executed successfully", "output": result.stdout}), 200
+    except subprocess.CalledProcessError as e:
+        return jsonify({"success": False, "message": f"DBT {command_type} execution failed", "error": e.stderr}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0')
+Adjusting the Shell Script (dbt_wrapper.sh)
+To handle different dbt commands, you'll need to modify your shell script to accept the command type as its first argument and then process model names for run and compile commands. Here’s an example of how you might adjust your shell script:
+
+bash
+Copy code
+#!/bin/bash
+set -e
+
+command_type=$1
+shift  # Remove the first argument, which is the command type
+
+# Common tasks before running any dbt command
+echo "Listing all files and directories in /usr/src/app:"
+find /usr/src/app -print
+
+echo "Checking for essential dbt files:"
+[[ -f /usr/src/app/dbt_project.yml ]] && echo "Found dbt_project.yml" || echo "dbt_project.yml is missing"
+[[ -f /usr/src/app/profiles.yml ]] && echo "Found profiles.yml" || echo "profiles.yml is missing"
+
+# Execute the specified dbt command
+case $command_type in
+  run)
+    dbt run --profiles-dir /usr/src/app --target int -m "$@"
+    ;;
+  compile)
+    dbt compile --profiles-dir /usr/src/app --target int -m "$@"
+    ;;
+  debug)
+    dbt debug --profiles-dir /usr/src/app --target int
+    ;;
+  *)
+    echo "Unsupported command type: $command_type"
+    exit 1
+    ;;
+esac
+This setup enables your Flask application to execute a wider range of dbt operations, providing a flexible web interface for managing and testing your dbt projects. Remember to call the endpoint with the appropriate parameters, for example:
+
+To run dbt debug: http://<flask_app_host>:<port>/dbt-operation?command=debug
+To compile specific models: http://<flask_app_host>:<port>/dbt-operation?command=compile&models=model1,model2
+Ensure your shell script is executable and adjust any paths or environment variables according to your specific setup and requirements.
