@@ -168,3 +168,8 @@ bash
 Copy code
 export DBT_TARGET_ENVIRONMENT=dev
 By following these steps, you ensure that each model is created in its designated dataset, providing clear separation and organization of your data layers within BigQuery. This approach aids in maintaining a structured and manageable data pipeline in your dbt project.
+
+
+
+
+{{ config(schema=env_var('DBT_DEV_DATASET') if target.name == 'dev' else env_var('DBT_INT_DATASET')) }}
