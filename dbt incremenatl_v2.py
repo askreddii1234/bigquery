@@ -291,3 +291,165 @@ CREATE TABLE your_dataset.target_table (
     batch_id STRING,                       -- Audit column for batch traceability
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()  -- Timestamp of when the record was processed
 ) PARTITION BY partition_date;
+
+
+BEGIN TRANSACTION;
+
+-- Handle the case where the control table is empty
+WITH control_table AS (
+    SELECT 
+        target_table,
+        COALESCE(MAX(end_time), TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 YEAR)) AS last_extraction_time
+    FROM `your_project.your_dataset.control_table`
+    GROUP BY target_table
+),
+
+-- Process data for table1
+source_data_table1 AS (
+    SELECT 
+        record_id,
+        updated_at,
+        json_field,
+        'table1' AS target_table
+    FROM `your_project.your_dataset.your_source_table`
+    LEFT JOIN control_table
+    ON control_table.target_table = 'table1'
+    WHERE updated_at > COALESCE(
+        (SELECT last_extraction_time FROM control_table WHERE target_table = 'table1'),
+        TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 YEAR)
+    )
+    AND JSON_EXTRACT(json_field, '$.name') IS NOT NULL -- Condition specific to table1
+),
+
+-- Process data for table2
+source_data_table2 AS (
+    SELECT 
+        record_id,
+        updated_at,
+        json_field,
+        'table2' AS target_table
+    FROM `your_project.your_dataset.your_source_table`
+    LEFT JOIN control_table
+    ON control_table.target_table = 'table2'
+    WHERE updated_at > COALESCE(
+        (SELECT last_extraction_time FROM control_table WHERE target_table = 'table2'),
+        TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 YEAR)
+    )
+    AND JSON_EXTRACT(json_field, '$.product') IS NOT NULL -- Condition specific to table2
+),
+
+-- Flatten data for table1
+flattened_data_table1 AS (
+    SELECT
+        record_id,
+        updated_at,
+        JSON_EXTRACT(json_field, '$.name') AS name,
+        JSON_EXTRACT(json_field, '$.address.city') AS address_city,
+        JSON_EXTRACT(json_field, '$.address.zip') AS address_zip,
+        DATE(updated_at) AS partition_date,
+        '{{ run_started_at }}' AS batch_id
+    FROM source_data_table1
+),
+
+-- Flatten data for table2
+flattened_data_table2 AS (
+    SELECT
+        record_id,
+        updated_at,
+        JSON_EXTRACT(json_field, '$.product.name') AS product_name,
+        JSON_EXTRACT(json_field, '$.product.details.brand') AS product_details_brand,
+        JSON_EXTRACT(json_field, '$.product.details.specs.ram') AS product_details_specs_ram,
+        JSON_EXTRACT(json_field, '$.product.details.specs.storage') AS product_details_specs_storage,
+        DATE(updated_at) AS partition_date,
+        '{{ run_started_at }}' AS batch_id
+    FROM source_data_table2
+)
+
+-- Insert data into table1
+INSERT INTO `your_project.your_dataset.table1` PARTITION BY partition_date (
+    record_id,
+    updated_at,
+    name,
+    address_city,
+    address_zip,
+    partition_date,
+    batch_id
+)
+SELECT
+    record_id,
+    updated_at,
+    name,
+    address_city,
+    address_zip,
+    partition_date,
+    batch_id
+FROM flattened_data_table1;
+
+-- Insert data into table2
+INSERT INTO `your_project.your_dataset.table2` PARTITION BY partition_date (
+    record_id,
+    updated_at,
+    product_name,
+    product_details_brand,
+    product_details_specs_ram,
+    product_details_specs_storage,
+    partition_date,
+    batch_id
+)
+SELECT
+    record_id,
+    updated_at,
+    product_name,
+    product_details_brand,
+    product_details_specs_ram,
+    product_details_specs_storage,
+    partition_date,
+    batch_id
+FROM flattened_data_table2;
+
+-- Update control table for table1
+INSERT INTO `your_project.your_dataset.control_table` (
+    target_table,
+    batch_id,
+    start_time,
+    end_time,
+    status,
+    processed_record_count
+)
+SELECT 
+    'table1' AS target_table,
+    '{{ run_started_at }}',
+    TIMESTAMP('{{ run_started_at }}'),
+    CURRENT_TIMESTAMP(),
+    'completed',
+    COUNT(*) AS processed_record_count
+FROM flattened_data_table1;
+
+-- Update control table for table2
+INSERT INTO `your_project.your_dataset.control_table` (
+    target_table,
+    batch_id,
+    start_time,
+    end_time,
+    status,
+    processed_record_count
+)
+SELECT 
+    'table2' AS target_table,
+    '{{ run_started_at }}',
+    TIMESTAMP('{{ run_started_at }}'),
+    CURRENT_TIMESTAMP(),
+    'completed',
+    COUNT(*) AS processed_record_count
+FROM flattened_data_table2;
+
+COMMIT TRANSACTION;
+
+CREATE TABLE your_project.your_dataset.control_table (
+    table_name STRING,               -- Target table name
+    batch_id STRING,                 -- Unique identifier for each batch run
+    start_time TIMESTAMP,            -- Timestamp when the batch processing started
+    end_time TIMESTAMP,              -- Timestamp when the batch processing ended
+    status STRING,                   -- Status of the batch ('completed', 'failed')
+    processed_record_count INT64     -- Number of records processed in the batch
+);
