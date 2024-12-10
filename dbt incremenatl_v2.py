@@ -416,6 +416,133 @@ INSERT INTO `your_project.your_dataset.control_table` (
     status,
     processed_record_count
 )
+
++++++
+
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from datetime import datetime
+import requests
+
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2024, 12, 1),  # Adjust as needed
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+}
+
+def trigger_flask_etl(**kwargs):
+    """
+    Trigger the Flask service to execute the ETL process.
+    """
+    # Extract the 'env' parameter from DAG params
+    env = kwargs['params']['env']
+    flask_url = f"http://<flask-service-url>/incremental?env={env}"  # Replace <flask-service-url>
+
+    try:
+        response = requests.get(flask_url)
+        response.raise_for_status()
+        print(f"ETL process triggered successfully for {env}: {response.json()}")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Failed to trigger Flask service: {e}")
+
+with DAG(
+    'trigger_flask_etl',
+    default_args=default_args,
+    description='Trigger Flask ETL service from Cloud Composer',
+    schedule_interval=None,  # Manual trigger
+    catchup=False,
+    params={'env': 'dev'},  # Default environment
+) as dag:
+
+    trigger_task = PythonOperator(
+        task_id='trigger_flask_etl_task',
+        python_callable=trigger_flask_etl,
+        provide_context=True
+    )
+
+    trigger_task
+
+
++++
+
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from airflow.utils.dates import days_ago
+from datetime import datetime
+import requests
+
+# Default arguments for the DAG
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2024, 12, 1),  # Adjust as needed
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+}
+
+# Function to trigger the Flask ETL service
+def trigger_flask_etl(**kwargs):
+    """
+    Trigger the Flask service to execute the ETL process.
+    """
+    # Extract the 'env' parameter from DAG params
+    env = kwargs['params']['env']
+    flask_url = f"http://<flask-service-url>/incremental?env={env}"  # Replace <flask-service-url>
+
+    try:
+        response = requests.get(flask_url)
+        response.raise_for_status()
+        # Store the success message in XCom
+        kwargs['ti'].xcom_push(key='etl_status', value='success')
+        print(f"ETL process triggered successfully for {env}: {response.json()}")
+    except requests.exceptions.RequestException as e:
+        # Store the failure message in XCom
+        kwargs['ti'].xcom_push(key='etl_status', value='failure')
+        raise Exception(f"Failed to trigger Flask service: {e}")
+
+# Function to log the status of the previous task
+def log_status(**kwargs):
+    """
+    Logs the status of the ETL trigger task.
+    """
+    # Retrieve the status from XCom
+    etl_status = kwargs['ti'].xcom_pull(task_ids='trigger_flask_etl_task', key='etl_status')
+    if etl_status == 'success':
+        print("ETL job completed successfully!")
+    else:
+        print("ETL job failed. Check the logs for details.")
+
+# Define the DAG
+with DAG(
+    'trigger_flask_etl_with_status',
+    default_args=default_args,
+    description='Trigger Flask ETL service and log status from Cloud Composer',
+    schedule_interval=None,  # Manual trigger
+    catchup=False,
+    params={'env': 'dev'},  # Default environment
+) as dag:
+
+    # Task to trigger the Flask ETL service
+    trigger_task = PythonOperator(
+        task_id='trigger_flask_etl_task',
+        python_callable=trigger_flask_etl,
+        provide_context=True
+    )
+
+    # Task to log the status of the previous task
+    log_status_task = PythonOperator(
+        task_id='log_status_task',
+        python_callable=log_status,
+        provide_context=True
+    )
+
+    # Define task dependencies
+    trigger_task >> log_status_task
+
 SELECT 
     'table1' AS target_table,
     '{{ run_started_at }}',
