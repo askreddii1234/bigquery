@@ -580,3 +580,120 @@ CREATE TABLE your_project.your_dataset.control_table (
     status STRING,                   -- Status of the batch ('completed', 'failed')
     processed_record_count INT64     -- Number of records processed in the batch
 );
+
+
+new learning!:
+
+import json
+import time
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from airflow.sensors.external_task_sensor import ExternalTaskSensor
+from airflow.utils.dates import days_ago
+from datetime import datetime
+import requests
+import os
+
+# Default arguments for the DAG
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2024, 12, 1),
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+}
+
+# Function to load configuration based on the environment
+def load_config(env):
+    config_path = os.getenv('CONFIG_FILE_PATH', './config.json')  # Path to the config file
+    with open(config_path, 'r') as config_file:
+        config = json.load(config_file)
+    return config[env]
+
+# Function to trigger a single dbt model
+def trigger_dbt_model(model, profile, flask_url, **kwargs):
+    """
+    Trigger the Flask service to execute a dbt model and store status in XCom.
+    """
+    model_url = f"{flask_url}/run_dbt_model?profile={profile}&model={model}"
+    try:
+        response = requests.get(model_url)
+        response.raise_for_status()
+        print(f"dbt model '{model}' executed successfully: {response.json()}")
+        # Push success status to XCom
+        kwargs['ti'].xcom_push(key=f'{model}_status', value='success')
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to execute dbt model '{model}': {e}")
+        # Push failure status to XCom
+        kwargs['ti'].xcom_push(key=f'{model}_status', value='failure')
+        raise Exception(f"Failed to execute dbt model '{model}': {e}")
+
+# Function to orchestrate model execution with a 2-minute delay
+def execute_dbt_models_with_delay(**kwargs):
+    """
+    Load configuration, execute dbt models sequentially, and add a delay between executions.
+    """
+    env = kwargs['params']['env']
+    config = load_config(env)
+    flask_url = config['flask_url']
+    profile = config['profile']
+    models = config['models']
+
+    for model in models:
+        print(f"Triggering model: {model}")
+        # Trigger the model execution
+        trigger_dbt_model(model, profile, flask_url, **kwargs)
+        
+        # Wait for 2 minutes before executing the next model
+        print(f"Waiting for 2 minutes before executing the next model...")
+        time.sleep(120)  # 120 seconds = 2 minutes
+
+# Function to log the execution status of all models
+def log_dbt_execution_status(**kwargs):
+    """
+    Retrieve and log the execution status of each model from XCom.
+    """
+    env = kwargs['params']['env']
+    config = load_config(env)
+    models = config['models']
+
+    for model in models:
+        status = kwargs['ti'].xcom_pull(key=f'{model}_status')
+        print(f"Model '{model}' execution status: {status}")
+
+# Define the new DAG
+with DAG(
+    'run_dbt_models_with_status_and_delay',
+    default_args=default_args,
+    description='Run dbt models sequentially with status tracking and delay',
+    schedule_interval=None,
+    catchup=False,
+    params={'env': 'dev'},  # Default environment
+) as dbt_dag:
+
+    # Sensor to wait for the first DAG to complete successfully
+    wait_for_etl_dag = ExternalTaskSensor(
+        task_id='wait_for_etl_dag',
+        external_dag_id='trigger_flask_etl_with_status',  # First DAG's ID
+        external_task_id=None,
+        mode='poke',
+        timeout=600,
+        poke_interval=30,
+    )
+
+    # Task to execute dbt models sequentially with delay
+    execute_models_task = PythonOperator(
+        task_id='execute_models_with_delay',
+        python_callable=execute_dbt_models_with_delay,
+        provide_context=True,
+    )
+
+    # Task to log the status of dbt models
+    log_status_task = PythonOperator(
+        task_id='log_dbt_execution_status',
+        python_callable=log_dbt_execution_status,
+        provide_context=True,
+    )
+
+    wait_for_etl_dag >> execute_models_task >> log_status_task
