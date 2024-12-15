@@ -697,3 +697,91 @@ with DAG(
     )
 
     wait_for_etl_dag >> execute_models_task >> log_status_task
+
+
+++++++++++++++
+
+from flask import Flask, request, jsonify
+import os
+import subprocess
+import logging
+
+app = Flask(__name__)
+
+# Set up logging for 100% traceability
+logging.basicConfig(
+    filename='dbt_command_execution.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+# GCP Project mapping
+gcp_project_ids = {
+    'bld': 'abcd',
+    'int': 'efgh'
+}
+
+def execute_dbt_command(command, env, profile_name, folder_name=None, model_name=None):
+    """Execute dbt command for all models in folder or specific model."""
+    gcp_project_id = gcp_project_ids.get(env)
+
+    if not gcp_project_id:
+        logging.error(f"Invalid environment: {env}")
+        return jsonify({"error": "Invalid environment or GCP project_id not found"}), 400
+
+    env_vars = {
+        'DBT_TARGET_ENVIRONMENT': env,
+        'GCP_PROJECT_ID': gcp_project_id
+    }
+
+    try:
+        # Construct dbt command
+        if folder_name and not model_name:
+            # Run all models in folder
+            command_to_run = f"dbt {command} --models {folder_name} --profile {profile_name} --profiles-dir /home/appuser/.dbt --target {env}"
+            logging.info(f"Running dbt command for all models in folder: {folder_name}")
+        elif folder_name and model_name:
+            # Run a specific model in a folder
+            command_to_run = f"dbt {command} --models {folder_name}/{model_name} --profile {profile_name} --profiles-dir /home/appuser/.dbt --target {env}"
+            logging.info(f"Running dbt command for model {model_name} in folder {folder_name}")
+        else:
+            # Default behavior
+            command_to_run = f"dbt {command} --profile {profile_name} --profiles-dir /home/appuser/.dbt --target {env}"
+            logging.info("Running default dbt command")
+
+        # Execute command
+        output = subprocess.check_output(
+            ['/bin/bash', '-c', command_to_run],
+            env={**env_vars, **os.environ},
+            stderr=subprocess.STDOUT
+        )
+
+        logging.info(f"Command succeeded: {command_to_run}")
+        return jsonify({"status": "success", "output": output.decode()}), 200
+
+    except subprocess.CalledProcessError as e:
+        error_output = e.output.decode()
+        logging.error(f"Command failed: {command_to_run} | Error: {error_output}")
+
+        # Determine status code based on errors
+        if "Compilation Error" in error_output:
+            status_code = 400
+        elif "Test Failure" in error_output:
+            status_code = 422
+        else:
+            status_code = 500
+
+        return jsonify({"status": "error", "error": error_output}), status_code
+
+@app.route('/<command>-dbt/<env>/<profile_name>/<folder_name>', defaults={'model_name': None}, methods=['GET'])
+@app.route('/<command>-dbt/<env>/<profile_name>/<folder_name>/<model_name>', methods=['GET'])
+def handle_dbt_command(command, env, profile_name, folder_name, model_name):
+    """API Endpoint to trigger dbt commands with profile name."""
+    if command not in ["run", "snapshot", "debug", "test", "compile"]:
+        logging.error(f"Invalid command: {command}")
+        return jsonify({"error": "Invalid command"}), 400
+
+    return execute_dbt_command(command, env, profile_name, folder_name, model_name)
+
+if __name__ == '__main__':
+    app.run(debug=True)
