@@ -1024,3 +1024,117 @@ with DAG(
 
     wait_for_etl_dag >> execute_folder_task >> log_status_task
 
+>>>>
+
+import json
+import time
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from airflow.sensors.external_task_sensor import ExternalTaskSensor
+from airflow.utils.dates import days_ago
+from datetime import datetime
+import requests
+
+import os
+
+# Default arguments for the DAG
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2024, 12, 1),
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+}
+
+# Function to load configuration based on the environment
+def load_config(env):
+    config_path = os.getenv('CONFIG_FILE_PATH', './config.json')  # Path to the config file
+    with open(config_path, 'r') as config_file:
+        config = json.load(config_file)
+    return config[env]
+
+# Function to trigger a single dbt model
+def trigger_dbt_model(env, folder_name, profile, flask_url, **kwargs):
+    """
+    Trigger the Flask service to execute dbt models in a folder and store status in XCom.
+    """
+    model_url = f"{flask_url}/run-dbt/{env}/{folder_name}?profile={profile}"
+    try:
+        response = requests.get(model_url)
+        response.raise_for_status()  # Raise exception for HTTP errors
+        response_data = response.json()
+
+        if response_data.get("status") == "success":
+            print(f"dbt models in folder '{folder_name}' executed successfully: {response_data}")
+            # Push success status to XCom
+            kwargs['ti'].xcom_push(key=f'{folder_name}_status', value='success')
+        else:
+            error_message = response_data.get("error", "Unknown error")
+            print(f"Error executing dbt models in folder '{folder_name}': {error_message}")
+            kwargs['ti'].xcom_push(key=f'{folder_name}_status', value='failure')
+            raise Exception(f"Failed to execute dbt models in folder '{folder_name}': {error_message}")
+    except requests.exceptions.RequestException as e:
+        print(f"Request to Flask service failed: {e}")
+        kwargs['ti'].xcom_push(key=f'{folder_name}_status', value='failure')
+        raise Exception(f"Request to Flask service failed: {e}")
+
+# Function to orchestrate folder execution after dependent DAG completion
+def execute_dbt_folder(**kwargs):
+    """
+    Load configuration and execute dbt models for a specific folder.
+    """
+    env = kwargs['params']['env']
+    config = load_config(env)
+    flask_url = config['flask_url']
+    profile = config['profile']
+    folder_name = kwargs['params']['folder_name']
+
+    print(f"Triggering folder: {folder_name}")
+    # Trigger the folder execution
+    trigger_dbt_model(env, folder_name, profile, flask_url, **kwargs)
+
+# Function to log the execution status of the folder
+def log_dbt_execution_status(**kwargs):
+    """
+    Retrieve and log the execution status of the folder from XCom.
+    """
+    folder_name = kwargs['params']['folder_name']
+    status = kwargs['ti'].xcom_pull(key=f'{folder_name}_status')
+    print(f"Folder '{folder_name}' execution status: {status}")
+
+# Define the new DAG
+with DAG(
+    'run_dbt_folder_with_dependency',
+    default_args=default_args,
+    description='Run dbt folder after DAG dependency',
+    schedule_interval=None,
+    catchup=False,
+    params={'env': 'dev', 'folder_name': 'default_folder'},  # Default environment and folder
+) as dbt_dag:
+
+    # Sensor to wait for the first DAG to complete successfully
+    wait_for_etl_dag = ExternalTaskSensor(
+        task_id='wait_for_etl_dag',
+        external_dag_id='trigger_flask_etl_with_status',  # First DAG's ID
+        external_task_id=None,
+        mode='poke',
+        timeout=600,
+        poke_interval=30,
+    )
+
+    # Task to execute dbt folder
+    execute_folder_task = PythonOperator(
+        task_id='execute_dbt_folder',
+        python_callable=execute_dbt_folder,
+        provide_context=True,
+    )
+
+    # Task to log the status of dbt folder
+    log_status_task = PythonOperator(
+        task_id='log_dbt_execution_status',
+        python_callable=log_dbt_execution_status,
+        provide_context=True,
+    )
+
+    wait_for_etl_dag >> execute_folder_task >> log_status_task
