@@ -1,0 +1,94 @@
+def is_first_working_day(execution_date, allow_manual=True):
+    if allow_manual and execution_date is None:
+        return True  # Allow manual/adhoc triggers without validation
+    
+    year, month = execution_date.year, execution_date.month
+    first_day = datetime(year, month, 1)
+    weekday = first_day.weekday()  # Monday is 0, Sunday is 6
+
+    if weekday < 5:  # If the 1st is a weekday
+        return execution_date == first_day
+    else:  # If the 1st is a weekend, calculate the next Monday
+        first_working_day = first_day + timedelta(days=(7 - weekday))
+        return execution_date == first_working_day
+
+
+#############
+
+
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from airflow.operators.dummy import DummyOperator
+from datetime import datetime, timedelta
+import calendar
+import requests
+
+# Default arguments for the DAG
+default_args = {
+    'owner': 'RISK Team',
+    'depends_on_past': False,
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 3,
+    'retry_delay': timedelta(minutes=5),
+}
+
+# Function to determine the first working day of the month
+def is_first_working_day(execution_date):
+    year, month = execution_date.year, execution_date.month
+    first_day = datetime(year, month, 1)
+    weekday = first_day.weekday()  # Monday is 0, Sunday is 6
+
+    if weekday < 5:  # If the 1st is a weekday
+        return execution_date == first_day
+    else:  # If the 1st is a weekend, calculate the next Monday
+        first_working_day = first_day + timedelta(days=(7 - weekday))
+        return execution_date == first_working_day
+
+# Function to trigger the Flask ETL service
+def trigger_flask_etl(**kwargs):
+    base_url = kwargs['params']['base_url']
+    env = kwargs['params']['env']
+    flask_url = f"{base_url}/incremental?env={env}"
+    try:
+        response = requests.get(flask_url, verify=False)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Failed to trigger Flask ETL service: {str(e)}")
+
+# Define the DAG
+with DAG(
+    'first_working_day_etl',
+    default_args=default_args,
+    description='A DAG to execute only on the first working day of the month',
+    schedule_interval='@monthly',  # Monthly schedule
+    start_date=datetime(2024, 12, 1),
+    catchup=False,
+) as dag:
+
+    # Dummy start
+    start = DummyOperator(task_id='start')
+
+    # Check if it's the first working day of the month
+    check_first_working_day = PythonOperator(
+        task_id='check_first_working_day',
+        python_callable=is_first_working_day,
+        provide_context=True,
+    )
+
+    # Trigger Flask ETL service
+    trigger_etl = PythonOperator(
+        task_id='trigger_flask_etl',
+        python_callable=trigger_flask_etl,
+        provide_context=True,
+        params={
+            'base_url': 'https://your-flask-etl-service.com',
+            'env': 'prod',
+        },
+    )
+
+    # Dummy end
+    end = DummyOperator(task_id='end')
+
+    # DAG dependencies
+    start >> check_first_working_day >> trigger_etl >> end
