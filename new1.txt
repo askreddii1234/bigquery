@@ -1,0 +1,24 @@
+{% macro get_dates(date_type) %}
+  {% set today_date = modules.datetime.date.today() %}
+  {% set yesterday_date = today_date - modules.datetime.timedelta(days=1) %}
+  {% set lag_period = yesterday_date.strftime('%Y%m') %}
+
+  {% if date_type == 'today' %}
+    {{ return(today_date) }}
+  {% elif date_type == 'yesterday' %}
+    {{ return(yesterday_date) }}
+  {% elif date_type == 'lag_period' %}
+    {{ return(lag_period) }}
+  {% else %}
+    {{ exceptions.raise_compiler_error("Invalid date_type! Choose 'today', 'yesterday', or 'lag_period'.") }}
+  {% endif %}
+{% endmacro %}
+
+
+select 
+  sales_id, 
+  sales_amount, 
+  {{ utility.get_dates('today') }} as today_date,
+  {{ utility.get_dates('yesterday') }} as yesterday_date,
+  {{ utility.get_dates('lag_period') }} as period_key
+from {{ utility.dynamic_table_ref('sales_data') }}
