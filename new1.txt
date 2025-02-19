@@ -1,3 +1,19 @@
+
+{% macro get_dates(date_type) %}
+  {% if date_type == 'today' %}
+    {{ return("CURRENT_DATE()") }}
+  {% elif date_type == 'yesterday' %}
+    {{ return("DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)") }}
+  {% elif date_type == 'lag_period' %}
+    {{ return("FORMAT_DATE('%Y%m', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))") }}
+  {% else %}
+    {{ exceptions.raise_compiler_error("Invalid date_type! Choose 'today', 'yesterday', or 'lag_period'.") }}
+  {% endif %}
+{% endmacro %}
+
+
+
+
 {% macro get_dates(date_type) %}
   {% set today_date = modules.datetime.date.today() %}
   {% set yesterday_date = today_date - modules.datetime.timedelta(days=1) %}
