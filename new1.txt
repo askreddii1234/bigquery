@@ -22,3 +22,20 @@ select
   {{ utility.get_dates('yesterday') }} as yesterday_date,
   {{ utility.get_dates('lag_period') }} as period_key
 from {{ utility.dynamic_table_ref('sales_data') }}
+
+get_lag_period.sql
+
+
+{% macro get_lag_period() %}
+  {% set today_date = modules.datetime.date.today() %}
+  {% set yesterday_date = today_date - modules.datetime.timedelta(days=1) %}
+  {% set period = yesterday_date.strftime('%Y%m') %}
+  {{ return(period) }}
+{% endmacro %}
+
+select *,
+  {{ utility.get_lag_period() }} as period_key
+from {{ utility.dynamic_table_ref('sales_data') }}
+
+
+
