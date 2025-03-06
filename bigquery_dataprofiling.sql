@@ -294,3 +294,95 @@ Which Insights Are Available?
 ✔ Correlation Matrix
 ✔ Data Skewness Analysis
 
+-- ========================
+-- 1) Declare variables
+-- ========================
+DECLARE projectName  STRING DEFAULT "my_project";  -- Replace with your GCP project
+DECLARE datasetName  STRING DEFAULT "my_dataset";  -- Replace with your dataset name
+DECLARE tableName    STRING DEFAULT "my_table";    -- Replace with your table name
+
+-- ========================
+-- 2) Create a temporary table to store profiling results
+-- ========================
+CREATE TEMP TABLE IF NOT EXISTS temp_profiling_results (
+  column_name   STRING,
+  data_type     STRING,
+  total_count   INT64,
+  distinct_count INT64,
+  null_count    INT64,
+  min_value     STRING,
+  max_value     STRING
+);
+
+-- ========================
+-- 3) Variables for the cursor loop
+-- ========================
+DECLARE col_name STRING DEFAULT "";
+DECLARE col_type STRING DEFAULT "";
+DECLARE done     BOOL   DEFAULT FALSE;
+
+-- ========================
+-- 4) Cursor to get all columns in the specified table via INFORMATION_SCHEMA
+-- ========================
+DECLARE columns_cursor CURSOR FOR
+  SELECT
+    column_name,
+    data_type
+  FROM `${projectName}.${datasetName}.INFORMATION_SCHEMA.COLUMNS`
+  WHERE table_name = tableName
+  ORDER BY ordinal_position;
+
+-- ========================
+-- 5) Open the cursor
+-- ========================
+OPEN columns_cursor;
+
+-- ========================
+-- 6) Loop through each column, building and running a dynamic SQL query
+-- ========================
+LOOP
+  FETCH columns_cursor INTO col_name, col_type;
+  IF columns_cursor%NOTFOUND THEN
+    SET done = TRUE;
+  END IF;
+  
+  IF done THEN 
+    LEAVE; 
+  END IF;
+
+  -- Build dynamic SQL that profiles a single column: total_count, distinct_count, null_count, min, max
+  EXECUTE IMMEDIATE (
+    "INSERT INTO temp_profiling_results " ||
+    "SELECT " ||
+    "  '" || col_name || "' AS column_name, " ||
+    "  '" || col_type || "' AS data_type, " ||
+    "  COUNT(*) AS total_count, " ||
+    "  COUNT(DISTINCT " || col_name || ") AS distinct_count, " ||
+    "  COUNTIF(" || col_name || " IS NULL) AS null_count, " ||
+    "  CASE " ||
+    "    WHEN '" || col_type || "' IN ('INT64','NUMERIC','FLOAT64','BIGNUMERIC','INTEGER','DATE','TIMESTAMP') " ||
+    "    THEN CAST(MIN(" || col_name || ") AS STRING) " ||
+    "    ELSE NULL " ||
+    "  END AS min_value, " ||
+    "  CASE " ||
+    "    WHEN '" || col_type || "' IN ('INT64','NUMERIC','FLOAT64','BIGNUMERIC','INTEGER','DATE','TIMESTAMP') " ||
+    "    THEN CAST(MAX(" || col_name || ") AS STRING) " ||
+    "    ELSE NULL " ||
+    "  END AS max_value " ||
+    "FROM `" || projectName || "." || datasetName || "." || tableName || "`"
+  );
+END LOOP;
+
+-- ========================
+-- 7) Finally, select from our temporary profiling table
+-- ========================
+SELECT 
+  column_name,
+  data_type,
+  total_count,
+  distinct_count,
+  null_count,
+  min_value,
+  max_value
+FROM temp_profiling_results
+ORDER BY column_name;
